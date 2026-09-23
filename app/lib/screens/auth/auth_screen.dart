@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../design/colors.dart';
 import '../../design/typography.dart';
+import '../../l10n/strings.dart';
 import '../../shell.dart';
 import 'login_form.dart';
 import 'signup_form.dart';
@@ -42,9 +43,15 @@ class _AuthScreenState extends State<AuthScreen> {
               Center(
                 child: Column(
                   children: [
-                    Text('HERE', style: AppText.wordmark.copyWith(fontSize: 40, color: colors.ink)),
+                    Hero(
+                      tag: 'here-wordmark',
+                      child: Material(
+                        type: MaterialType.transparency,
+                        child: Text('HERE', style: AppText.wordmark.copyWith(fontSize: 40, color: colors.ink)),
+                      ),
+                    ),
                     const SizedBox(height: 6),
-                    Text('Someone HERE can help.', style: AppText.meta.copyWith(color: colors.ink45)),
+                    Text(t('Someone HERE can help.'), style: AppText.meta.copyWith(color: colors.ink45)),
                   ],
                 ),
               ),
@@ -79,8 +86,8 @@ class _ModeToggle extends StatelessWidget {
       decoration: BoxDecoration(color: colors.sand, borderRadius: BorderRadius.circular(14)),
       child: Row(
         children: [
-          Expanded(child: _segment(context, 'Log in', _Mode.login)),
-          Expanded(child: _segment(context, 'Sign up', _Mode.signup)),
+          Expanded(child: _segment(context, t('Log in'), _Mode.login)),
+          Expanded(child: _segment(context, t('Sign up'), _Mode.signup)),
         ],
       ),
     );

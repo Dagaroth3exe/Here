@@ -11,6 +11,7 @@ class AuthTextField extends StatelessWidget {
     this.maxLength,
     this.letterSpacedDigits = false,
     this.autofocus = false,
+    this.obscureText = false,
   });
 
   final TextEditingController controller;
@@ -19,6 +20,7 @@ class AuthTextField extends StatelessWidget {
   final int? maxLength;
   final bool letterSpacedDigits;
   final bool autofocus;
+  final bool obscureText;
 
   @override
   Widget build(BuildContext context) {
@@ -34,6 +36,7 @@ class AuthTextField extends StatelessWidget {
         keyboardType: keyboardType,
         maxLength: maxLength,
         autofocus: autofocus,
+        obscureText: obscureText,
         style: TextStyle(
           fontFamily: 'Outfit',
           fontSize: letterSpacedDigits ? 20 : 15,

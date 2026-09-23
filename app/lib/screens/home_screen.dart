@@ -1,7 +1,15 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../design/colors.dart';
 import '../design/typography.dart';
+import '../l10n/strings.dart';
+import '../services/auth_session.dart';
+import '../services/avatar_controller.dart';
+import '../services/realtime_service.dart';
+import '../utils/initials.dart';
+import '../widgets/avatar_thumb.dart';
 import '../widgets/mini_map.dart';
+import 'profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -12,11 +20,49 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool _reachable = true;
+  int _reachableCount = 0;
+  StreamSubscription<List<ReachablePerson>>? _peopleSub;
+  StreamSubscription<IncomingPing>? _pingSub;
 
   static const _openTopics = ['Local questions', 'Recommendations', 'Tech', 'Conversation'];
   static const _moreTopicsCount = 5;
 
-  void _toggle() => setState(() => _reachable = !_reachable);
+  @override
+  void initState() {
+    super.initState();
+    _peopleSub = RealtimeService.instance.peopleStream.listen((people) {
+      setState(() => _reachableCount = people.length);
+    });
+    _pingSub = RealtimeService.instance.pingStream.listen((ping) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(t('{name} pinged you!', {'name': ping.fromName}))),
+      );
+    });
+    if (_reachable) _goReachable();
+  }
+
+  void _goReachable() {
+    final token = AuthSession.accessToken;
+    if (token != null) RealtimeService.instance.connect(token);
+  }
+
+  void _toggle() {
+    setState(() => _reachable = !_reachable);
+    if (_reachable) {
+      _goReachable();
+    } else {
+      RealtimeService.instance.disconnect();
+    }
+  }
+
+  @override
+  void dispose() {
+    _peopleSub?.cancel();
+    _pingSub?.cancel();
+    RealtimeService.instance.disconnect();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,7 +71,11 @@ class _HomeScreenState extends State<HomeScreen> {
       child: ListView(
         padding: const EdgeInsets.only(bottom: 24),
         children: [
-          const _Header(),
+          _Header(
+            onAvatarTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const ProfileScreen()),
+            ),
+          ),
           Padding(
             padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
             child: _StatusCard(reachable: _reachable, onTap: _toggle),
@@ -34,9 +84,11 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
             child: Row(
               children: [
-                const Expanded(child: _StatCard.plain(value: '64', caption: 'people nearby')),
+                Expanded(child: _StatCard.plain(value: '64', caption: t('people nearby'))),
                 const SizedBox(width: 10),
-                const Expanded(child: _StatCard.reachable(value: '17', caption: 'Reachable right now')),
+                Expanded(
+                  child: _StatCard.reachable(value: '$_reachableCount', caption: t('Reachable right now')),
+                ),
               ],
             ),
           ),
@@ -59,7 +111,9 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class _Header extends StatelessWidget {
-  const _Header();
+  const _Header({required this.onAvatarTap});
+
+  final VoidCallback onAvatarTap;
 
   @override
   Widget build(BuildContext context) {
@@ -77,19 +131,30 @@ class _Header extends StatelessWidget {
               Text('Sector 62, Noida · 800 m radius', style: AppText.meta.copyWith(color: colors.ink45)),
             ],
           ),
-          Container(
-            width: 38,
-            height: 38,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(color: colors.sandDeep, shape: BoxShape.circle),
-            child: Text(
-              'AR',
-              style: TextStyle(
-                fontFamily: 'Outfit',
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-                color: colors.inkMutedAvatar,
-              ),
+          GestureDetector(
+            key: const Key('profileAvatar'),
+            onTap: onAvatarTap,
+            child: ValueListenableBuilder<String?>(
+              valueListenable: AvatarController.selected,
+              builder: (context, avatar, _) {
+                return Container(
+                  width: 38,
+                  height: 38,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(color: colors.sandDeep, shape: BoxShape.circle),
+                  child: avatar != null
+                      ? AvatarThumb(source: avatar, size: 38)
+                      : Text(
+                          initialsFor(AuthSession.name ?? 'You'),
+                          style: TextStyle(
+                            fontFamily: 'Outfit',
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                            color: colors.inkMutedAvatar,
+                          ),
+                        ),
+                );
+              },
             ),
           ),
         ],
@@ -128,14 +193,14 @@ class _StatusCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'YOUR STATUS',
+                    t('YOUR STATUS'),
                     style: AppText.statusEyebrow.copyWith(
                       color: reachable ? colors.statusEyebrowOn : colors.ink40,
                     ),
                   ),
                   const SizedBox(height: 7),
                   Text(
-                    reachable ? "You're Reachable" : 'Not Reachable',
+                    t(reachable ? "You're Reachable" : 'Not Reachable'),
                     style: AppText.statusTitle.copyWith(
                       color: reachable ? colors.greenInkDeep : colors.ink,
                     ),
@@ -144,9 +209,9 @@ class _StatusCard extends StatelessWidget {
                   ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 200),
                     child: Text(
-                      reachable
+                      t(reachable
                           ? 'Nearby people can ping you about the topics you chose.'
-                          : 'Tap to let nearby people reach you.',
+                          : 'Tap to let nearby people reach you.'),
                       style: AppText.statusSubtext.copyWith(
                         color: reachable ? colors.statusSubtextOn : colors.ink50,
                       ),
@@ -261,9 +326,9 @@ class _OpenToSection extends StatelessWidget {
           textBaseline: TextBaseline.alphabetic,
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text("You're open to", style: AppText.sectionHeader.copyWith(color: colors.ink)),
+            Text(t("You're open to"), style: AppText.sectionHeader.copyWith(color: colors.ink)),
             Text(
-              'Edit',
+              t('Edit'),
               style: TextStyle(fontFamily: 'Outfit', fontWeight: FontWeight.w500, fontSize: 12.5, color: colors.greenInk),
             ),
           ],
@@ -281,7 +346,7 @@ class _OpenToSection extends StatelessWidget {
                   borderRadius: BorderRadius.circular(999),
                   border: Border.all(color: colors.hairline),
                 ),
-                child: Text(topic, style: AppText.chipLabel.copyWith(color: colors.ink70)),
+                child: Text(t(topic), style: AppText.chipLabel.copyWith(color: colors.ink70)),
               ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -289,7 +354,10 @@ class _OpenToSection extends StatelessWidget {
                 borderRadius: BorderRadius.circular(999),
                 border: Border.all(color: colors.hairlineDashed),
               ),
-              child: Text('+ $moreCount more', style: AppText.chipLabel.copyWith(color: colors.ink40, fontWeight: FontWeight.w400)),
+              child: Text(
+                t('+{count} more', {'count': moreCount}),
+                style: AppText.chipLabel.copyWith(color: colors.ink40, fontWeight: FontWeight.w400),
+              ),
             ),
           ],
         ),
@@ -314,13 +382,13 @@ class _ReputationCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Helped 32 people · replies in ~4 min', style: AppText.reputationLine.copyWith(color: colors.ink50)),
+          Text(t('Helped 32 people · replies in ~4 min'), style: AppText.reputationLine.copyWith(color: colors.ink50)),
           const SizedBox(height: 9),
           Row(
             children: [
-              _Badge(text: 'TRUSTED HELPER', color: colors.greenInk, background: colors.greenTintBadge),
+              _Badge(text: t('TRUSTED HELPER'), color: colors.greenInk, background: colors.greenTintBadge),
               const SizedBox(width: 8),
-              _Badge(text: 'LOCAL · 3 YRS', color: colors.inkMutedAvatar, background: colors.sand),
+              _Badge(text: t('LOCAL · 3 YRS'), color: colors.inkMutedAvatar, background: colors.sand),
             ],
           ),
         ],

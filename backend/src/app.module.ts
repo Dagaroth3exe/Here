@@ -4,6 +4,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { AuthModule } from './auth/auth.module.js';
+import { ChatModule } from './chat/chat.module.js';
+import { RealtimeModule } from './realtime/realtime.module.js';
 import { RedisModule } from './redis/redis.module.js';
 import { UsersModule } from './users/users.module.js';
 
@@ -22,6 +24,8 @@ import { UsersModule } from './users/users.module.js';
     RedisModule,
     UsersModule,
     AuthModule,
+    ChatModule,
+    RealtimeModule,
   ],
   controllers: [AppController],
   providers: [AppService],

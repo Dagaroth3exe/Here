@@ -19,6 +19,7 @@ import { Repository } from 'typeorm';
 import { REDIS_CLIENT } from '../redis/redis.module.js';
 import { User } from '../users/user.entity.js';
 import { UsersService } from '../users/users.service.js';
+import { hashPassword, verifyPassword } from './password.util.js';
 import { TotpCrypto } from './totp-crypto.js';
 import { TotpCredential } from './totp-credential.entity.js';
 import { WebauthnCredential } from './webauthn-credential.entity.js';
@@ -286,7 +287,27 @@ export class AuthService {
     return { timeStep: currentTimeStep + (result.delta ?? 0) };
   }
 
+  async signupWithPassword(name: string, password: string): Promise<{ accessToken: string }> {
+    const existing = await this.usersService.findByUsername(name);
+    if (existing) {
+      throw new UnauthorizedException('That name is already taken');
+    }
+
+    const passwordHash = await hashPassword(password);
+    const user = await this.usersService.createWithPassword(name, passwordHash);
+    return { accessToken: this.issueToken(user) };
+  }
+
+  async loginWithPassword(name: string, password: string): Promise<{ accessToken: string }> {
+    const user = await this.usersService.findByUsername(name);
+    if (!user?.passwordHash || !(await verifyPassword(password, user.passwordHash))) {
+      throw new UnauthorizedException('Incorrect name or password');
+    }
+
+    return { accessToken: this.issueToken(user) };
+  }
+
   private issueToken(user: User): string {
-    return this.jwtService.sign({ sub: user.id, email: user.email });
+    return this.jwtService.sign({ sub: user.id, email: user.email, username: user.username });
   }
 }

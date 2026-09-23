@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../design/colors.dart';
 import '../design/typography.dart';
+import '../l10n/strings.dart';
 import '../screens/full_map_screen.dart';
 import 'map_canvas.dart';
 
@@ -54,7 +55,7 @@ class MiniMap extends StatelessWidget {
                     ),
                     const SizedBox(width: 7),
                     Text(
-                      '$reachableInView Reachable in view',
+                      t('{count} Reachable in view', {'count': reachableInView}),
                       style: AppText.chipLabel.copyWith(color: colors.ink70, fontSize: 11.5),
                     ),
                   ],
@@ -68,7 +69,7 @@ class MiniMap extends StatelessWidget {
                 onTap: () => _openFullMap(context),
                 child: _OverlayPill(
                   child: Text(
-                    'Open map',
+                    t('Open map'),
                     style: TextStyle(
                       fontFamily: 'Outfit',
                       fontWeight: FontWeight.w500,

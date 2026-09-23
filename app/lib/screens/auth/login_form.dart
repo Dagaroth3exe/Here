@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../design/colors.dart';
 import '../../design/typography.dart';
+import '../../l10n/strings.dart';
 import '../../services/auth_api.dart';
 import '../../services/auth_session.dart';
 import 'auth_widgets.dart';
@@ -15,15 +16,15 @@ class LoginForm extends StatefulWidget {
 }
 
 class _LoginFormState extends State<LoginForm> {
-  final _email = TextEditingController();
-  final _code = TextEditingController();
+  final _name = TextEditingController();
+  final _password = TextEditingController();
   bool _loading = false;
   String? _error;
 
   @override
   void dispose() {
-    _email.dispose();
-    _code.dispose();
+    _name.dispose();
+    _password.dispose();
     super.dispose();
   }
 
@@ -33,8 +34,8 @@ class _LoginFormState extends State<LoginForm> {
       _error = null;
     });
     try {
-      final token = await AuthApi.loginWithTotp(_email.text.trim(), _code.text.trim());
-      AuthSession.set(_email.text.trim(), token);
+      final token = await AuthApi.loginWithPassword(_name.text.trim(), _password.text);
+      AuthSession.set(_name.text.trim(), token);
       widget.onSuccess();
     } on AuthApiException catch (e) {
       setState(() => _error = e.message);
@@ -49,29 +50,19 @@ class _LoginFormState extends State<LoginForm> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'Enter your email and the code from your authenticator app.',
+          t('Enter your name and password.'),
           style: AppText.reputationLine.copyWith(color: context.colors.ink50),
         ),
         const SizedBox(height: 20),
-        AuthTextField(
-          controller: _email,
-          label: 'Email',
-          keyboardType: TextInputType.emailAddress,
-        ),
+        AuthTextField(controller: _name, label: t('Name')),
         const SizedBox(height: 12),
-        AuthTextField(
-          controller: _code,
-          label: 'Authenticator code',
-          keyboardType: TextInputType.number,
-          maxLength: 6,
-          letterSpacedDigits: true,
-        ),
+        AuthTextField(controller: _password, label: t('Password'), obscureText: true),
         if (_error != null) ...[
           const SizedBox(height: 12),
-          AuthErrorBanner(message: _error!),
+          AuthErrorBanner(message: t(_error!)),
         ],
         const SizedBox(height: 20),
-        PrimaryAuthButton(label: 'Log in', loading: _loading, onTap: _submit),
+        PrimaryAuthButton(label: t('Log in'), loading: _loading, onTap: _submit),
       ],
     );
   }

@@ -1,9 +1,16 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import '../data/seed_people.dart';
 import '../design/colors.dart';
 import '../design/typography.dart';
-import '../models/person.dart';
+import '../l10n/strings.dart';
+import '../services/auth_session.dart';
+import '../services/realtime_service.dart';
+import '../utils/initials.dart';
+import 'chat_thread_screen.dart';
 
+/// Live "who's Reachable right now" — sourced entirely from the realtime
+/// WebSocket connection (see [RealtimeService]), not sample data. Pinging
+/// someone here sends a real message over that socket.
 class DiscoverScreen extends StatefulWidget {
   const DiscoverScreen({super.key});
 
@@ -12,30 +19,35 @@ class DiscoverScreen extends StatefulWidget {
 }
 
 class _DiscoverScreenState extends State<DiscoverScreen> {
-  static const _filters = ['All', 'Local questions', 'Tech', 'Travel', 'Study', 'Conversation'];
-
-  String _activeFilter = 'All';
   final Set<String> _pingedIds = {};
+  List<ReachablePerson> _people = const [];
+  StreamSubscription<List<ReachablePerson>>? _peopleSub;
 
-  List<Person> get _filteredPeople {
-    if (_activeFilter == 'All') return seedPeople;
-    final key = _activeFilter.toLowerCase().split(' ').first;
-    return seedPeople.where((p) => p.tags.any((t) => t.toLowerCase().contains(key))).toList();
-  }
-
-  void _togglePing(String id) {
-    setState(() {
-      if (_pingedIds.contains(id)) {
-        _pingedIds.remove(id);
-      } else {
-        _pingedIds.add(id);
-      }
+  @override
+  void initState() {
+    super.initState();
+    _peopleSub = RealtimeService.instance.peopleStream.listen((people) {
+      setState(() => _people = people);
     });
   }
 
   @override
+  void dispose() {
+    _peopleSub?.cancel();
+    super.dispose();
+  }
+
+  List<ReachablePerson> get _others =>
+      _people.where((p) => p.name != AuthSession.name).toList();
+
+  void _ping(ReachablePerson person) {
+    RealtimeService.instance.sendPing(person.id);
+    setState(() => _pingedIds.add(person.id));
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final people = _filteredPeople;
+    final people = _others;
     final colors = context.colors;
 
     return ColoredBox(
@@ -52,7 +64,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                   textBaseline: TextBaseline.alphabetic,
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('People HERE', style: AppText.screenTitle.copyWith(color: colors.ink)),
+                    Text(t('People HERE'), style: AppText.screenTitle.copyWith(color: colors.ink)),
                     Text('Sector 62', style: TextStyle(fontFamily: 'Outfit', fontSize: 12, color: colors.ink45)),
                   ],
                 ),
@@ -66,28 +78,11 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                     ),
                     const SizedBox(width: 7),
                     Text(
-                      '17 Reachable within 800 m',
+                      t('{count} Reachable right now', {'count': people.length}),
                       style: TextStyle(fontFamily: 'Outfit', fontSize: 12.5, color: colors.ink50),
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
-          SizedBox(
-            height: 42,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.fromLTRB(22, 0, 22, 4),
-              children: [
-                for (final filter in _filters) ...[
-                  _FilterChip(
-                    label: filter,
-                    active: filter == _activeFilter,
-                    onTap: () => setState(() => _activeFilter = filter),
-                  ),
-                  const SizedBox(width: 7),
-                ],
               ],
             ),
           ),
@@ -97,7 +92,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 22),
                     child: Center(
                       child: Text(
-                        'No one Reachable for $_activeFilter within 800 m · try a wider radius',
+                        t('No one else is Reachable right now — check back soon.'),
                         textAlign: TextAlign.center,
                         style: AppText.reputationLine.copyWith(color: colors.ink50),
                       ),
@@ -112,7 +107,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                       return _PersonCard(
                         person: person,
                         pinged: _pingedIds.contains(person.id),
-                        onPing: () => _togglePing(person.id),
+                        onPing: () => _ping(person),
                       );
                     },
                   ),
@@ -123,39 +118,10 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   }
 }
 
-class _FilterChip extends StatelessWidget {
-  const _FilterChip({required this.label, required this.active, required this.onTap});
-
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.colors;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-        decoration: BoxDecoration(
-          color: active ? colors.ink : Colors.transparent,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: active ? colors.ink : colors.hairlineChip),
-        ),
-        child: Text(
-          label,
-          style: AppText.chipLabel.copyWith(color: active ? colors.paper : colors.ink55),
-        ),
-      ),
-    );
-  }
-}
-
 class _PersonCard extends StatelessWidget {
   const _PersonCard({required this.person, required this.pinged, required this.onPing});
 
-  final Person person;
+  final ReachablePerson person;
   final bool pinged;
   final VoidCallback onPing;
 
@@ -173,86 +139,82 @@ class _PersonCard extends StatelessWidget {
       child: Column(
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Container(
                 width: 46,
                 height: 46,
                 alignment: Alignment.center,
-                decoration: BoxDecoration(shape: BoxShape.circle, color: person.avatarTint),
+                decoration: BoxDecoration(shape: BoxShape.circle, color: colors.sandDeep),
                 child: Text(
-                  person.initials,
+                  initialsFor(person.name),
                   style: TextStyle(
                     fontFamily: 'Outfit',
                     fontWeight: FontWeight.w600,
                     fontSize: 14,
                     letterSpacing: 0.02 * 14,
-                    color: person.avatarInk,
+                    color: colors.inkMutedAvatar,
                   ),
                 ),
               ),
               const SizedBox(width: 13),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Row(
                   children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Container(
-                          width: 7,
-                          height: 7,
-                          decoration: BoxDecoration(shape: BoxShape.circle, color: colors.green),
-                        ),
-                        const SizedBox(width: 7),
-                        Text(person.name, style: AppText.personName.copyWith(color: colors.ink)),
-                        const SizedBox(width: 4),
-                        Text('${person.age}', style: AppText.personAge.copyWith(color: colors.ink42)),
-                        const Spacer(),
-                        Text(
-                          person.distanceLabel,
-                          style: TextStyle(fontFamily: 'Outfit', fontSize: 12, color: colors.ink35),
-                        ),
-                      ],
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(shape: BoxShape.circle, color: colors.green),
                     ),
-                    const SizedBox(height: 6),
-                    Text(person.reputationLine, style: AppText.reputationLine.copyWith(color: colors.ink50)),
-                    const SizedBox(height: 1),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        for (final tag in person.tags)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
-                            decoration: BoxDecoration(color: colors.sand, borderRadius: BorderRadius.circular(999)),
-                            child: Text(tag, style: AppText.personTag.copyWith(color: colors.ink70)),
-                          ),
-                      ],
-                    ),
+                    const SizedBox(width: 7),
+                    Expanded(child: Text(person.name, style: AppText.personName.copyWith(color: colors.ink))),
                   ],
                 ),
               ),
             ],
           ),
           const SizedBox(height: 13),
-          GestureDetector(
-            onTap: onPing,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 250),
-              width: double.infinity,
-              height: 44,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: pinged ? colors.sand : colors.green,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: pinged ? colors.hairline : colors.green),
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: onPing,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 250),
+                    height: 44,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: pinged ? colors.sand : colors.green,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: pinged ? colors.hairline : colors.green),
+                    ),
+                    child: Text(
+                      t(pinged ? 'Ping sent' : 'PING'),
+                      style: AppText.pingButton.copyWith(color: pinged ? colors.ink45 : Colors.white),
+                    ),
+                  ),
+                ),
               ),
-              child: Text(
-                pinged ? 'Ping sent' : 'PING',
-                style: AppText.pingButton.copyWith(color: pinged ? colors.ink45 : Colors.white),
+              const SizedBox(width: 10),
+              GestureDetector(
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ChatThreadScreen(otherUserId: person.id, otherName: person.name),
+                  ),
+                ),
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: colors.surface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: colors.hairline),
+                  ),
+                  child: Icon(Icons.chat_bubble_outline_rounded, size: 19, color: colors.ink70),
+                ),
               ),
-            ),
+            ],
           ),
         ],
       ),

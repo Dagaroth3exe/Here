@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
-/// Text styles ported 1:1 from the HERE design handoff's typography table.
-/// Outfit for chrome/body, Baloo 2 for wordmark/section headers/numerals.
+/// Text styles for the app. Outfit (clean, warm, highly readable) for
+/// body/UI chrome, Baloo 2 (soft, rounded, friendly) for headings and big
+/// numerals — matching HERE's human-connection tone. The one exception is
+/// [wordmark]: the "HERE" brand mark itself, which uses a pixel-art font to
+/// tie directly to the mascot, since it's a logotype rather than UI text.
 ///
 /// None of these carry a color — color is theme-dependent (light/dark), so
 /// it's always applied at the call site via `context.colors` (see colors.dart).
@@ -10,10 +13,15 @@ class AppText {
 
   static const _outfit = 'Outfit';
   static const _baloo = 'Baloo 2';
+  static const _pixel = 'Pixelify Sans';
 
-  static const wordmark = TextStyle(
-    fontFamily: _baloo,
+  /// The "HERE" brand wordmark — pixel-art font, variable weight, so the
+  /// visual weight (not just the fallback [FontWeight]) is actually
+  /// interpolated via [FontVariation] on the flesh-and-blood glyphs.
+  static final wordmark = TextStyle(
+    fontFamily: _pixel,
     fontWeight: FontWeight.w700,
+    fontVariations: const [FontVariation('wght', 700)],
     fontSize: 23,
     letterSpacing: 0.055 * 23,
     height: 1.0,

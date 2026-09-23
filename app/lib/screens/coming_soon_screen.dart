@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../design/colors.dart';
 import '../design/typography.dart';
+import '../l10n/strings.dart';
 
 /// Placeholder for screens not yet designed (Ask HERE, Chats).
 /// Intentionally minimal — do not invent a full design for these.
@@ -15,7 +16,7 @@ class ComingSoonScreen extends StatelessWidget {
     return ColoredBox(
       color: colors.paper,
       child: Center(
-        child: Text('$label · coming soon', style: AppText.reputationLine.copyWith(color: colors.ink50)),
+        child: Text(t('{label} · coming soon', {'label': label}), style: AppText.reputationLine.copyWith(color: colors.ink50)),
       ),
     );
   }

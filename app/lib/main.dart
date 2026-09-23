@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'design/colors.dart';
+import 'l10n/app_locale.dart';
 import 'screens/splash_screen.dart';
+import 'services/theme_controller.dart';
 
 void main() {
   runApp(const HereApp());
@@ -26,33 +29,50 @@ class HereApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'HERE',
-      theme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.light,
-        fontFamily: 'Outfit',
-        scaffoldBackgroundColor: AppColors.light.paper,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: AppColors.light.green,
-          brightness: Brightness.light,
-          surface: AppColors.light.paper,
-        ),
-      ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        fontFamily: 'Outfit',
-        scaffoldBackgroundColor: AppColors.dark.paper,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: AppColors.dark.green,
-          brightness: Brightness.dark,
-          surface: AppColors.dark.paper,
-        ),
-      ),
-      themeMode: ThemeMode.system,
-      scrollBehavior: _AppScrollBehavior(),
-      home: const SplashScreen(),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeController.mode,
+      builder: (context, themeMode, _) {
+        return ValueListenableBuilder<Locale>(
+          valueListenable: AppLocale.current,
+          builder: (context, locale, _) {
+            return MaterialApp(
+              title: 'HERE',
+              locale: locale,
+              supportedLocales: AppLocale.supported,
+              localizationsDelegates: const [
+                GlobalMaterialLocalizations.delegate,
+                GlobalWidgetsLocalizations.delegate,
+                GlobalCupertinoLocalizations.delegate,
+              ],
+              theme: ThemeData(
+                useMaterial3: true,
+                brightness: Brightness.light,
+                fontFamily: 'Outfit',
+                scaffoldBackgroundColor: AppColors.light.paper,
+                colorScheme: ColorScheme.fromSeed(
+                  seedColor: AppColors.light.green,
+                  brightness: Brightness.light,
+                  surface: AppColors.light.paper,
+                ),
+              ),
+              darkTheme: ThemeData(
+                useMaterial3: true,
+                brightness: Brightness.dark,
+                fontFamily: 'Outfit',
+                scaffoldBackgroundColor: AppColors.dark.paper,
+                colorScheme: ColorScheme.fromSeed(
+                  seedColor: AppColors.dark.green,
+                  brightness: Brightness.dark,
+                  surface: AppColors.dark.paper,
+                ),
+              ),
+              themeMode: themeMode,
+              scrollBehavior: _AppScrollBehavior(),
+              home: const SplashScreen(),
+            );
+          },
+        );
+      },
     );
   }
 }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'design/colors.dart';
+import 'l10n/strings.dart';
+import 'screens/chat_list_screen.dart';
 import 'screens/coming_soon_screen.dart';
 import 'screens/discover_screen.dart';
 import 'screens/home_screen.dart';
@@ -15,12 +17,12 @@ class HereShell extends StatefulWidget {
 class _HereShellState extends State<HereShell> {
   AppTab _current = AppTab.home;
 
-  static const _screens = {
-    AppTab.home: HomeScreen(),
-    AppTab.discover: DiscoverScreen(),
-    AppTab.askHere: ComingSoonScreen(label: 'Ask HERE'),
-    AppTab.chats: ComingSoonScreen(label: 'Chats'),
-  };
+  Map<AppTab, Widget> get _screens => {
+        AppTab.home: const HomeScreen(),
+        AppTab.discover: const DiscoverScreen(),
+        AppTab.askHere: ComingSoonScreen(label: t('Ask HERE')),
+        AppTab.chats: const ChatListScreen(),
+      };
 
   @override
   Widget build(BuildContext context) {

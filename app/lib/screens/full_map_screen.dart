@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../design/colors.dart';
 import '../design/typography.dart';
+import '../l10n/strings.dart';
 import '../widgets/map_canvas.dart';
 
 const _kMargin = 16.0;
@@ -35,7 +36,7 @@ class FullMapScreen extends StatelessWidget {
                     left: 14,
                     top: 12,
                     child: _OverlayPillButton(
-                      label: 'Minimize',
+                      label: t('Minimize'),
                       onTap: () => Navigator.of(context).pop(),
                     ),
                   ),
@@ -53,7 +54,7 @@ class FullMapScreen extends StatelessWidget {
                           ),
                           const SizedBox(width: 7),
                           Text(
-                            '$reachableInView Reachable in view',
+                            t('{count} Reachable in view', {'count': reachableInView}),
                             style: AppText.chipLabel.copyWith(color: colors.ink70, fontSize: 11.5),
                           ),
                         ],

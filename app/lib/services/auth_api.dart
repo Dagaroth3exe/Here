@@ -17,7 +17,8 @@ class TotpSetupResult {
   final String otpauthUrl;
 }
 
-/// Talks to the backend's email+TOTP auth endpoints.
+/// Talks to the backend's auth endpoints (name+password, plus the
+/// email+TOTP ones kept around for later).
 ///
 /// The Android emulator can't reach the host machine via `localhost` — it
 /// has to use the special `10.0.2.2` alias instead. A real device would need
@@ -39,6 +40,16 @@ class AuthApi {
 
   static Future<String> loginWithTotp(String email, String code) async {
     final json = await _post('/auth/totp/login', {'email': email, 'code': code});
+    return json['accessToken'] as String;
+  }
+
+  static Future<String> signupWithPassword(String name, String password) async {
+    final json = await _post('/auth/password/signup', {'name': name, 'password': password});
+    return json['accessToken'] as String;
+  }
+
+  static Future<String> loginWithPassword(String name, String password) async {
+    final json = await _post('/auth/password/login', {'name': name, 'password': password});
     return json['accessToken'] as String;
   }
 

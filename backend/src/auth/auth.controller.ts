@@ -2,6 +2,8 @@ import { Body, Controller, Post } from '@nestjs/common';
 import { AuthService } from './auth.service.js';
 import { AuthenticationOptionsDto } from './dto/authentication-options.dto.js';
 import { AuthenticationVerificationDto } from './dto/authentication-verification.dto.js';
+import { PasswordLoginDto } from './dto/password-login.dto.js';
+import { PasswordSignupDto } from './dto/password-signup.dto.js';
 import { RegistrationOptionsDto } from './dto/registration-options.dto.js';
 import { RegistrationVerificationDto } from './dto/registration-verification.dto.js';
 import { TotpConfirmDto } from './dto/totp-confirm.dto.js';
@@ -45,5 +47,15 @@ export class AuthController {
   @Post('totp/login')
   totpLogin(@Body() dto: TotpLoginDto) {
     return this.authService.loginWithTotp(dto.email, dto.code);
+  }
+
+  @Post('password/signup')
+  passwordSignup(@Body() dto: PasswordSignupDto) {
+    return this.authService.signupWithPassword(dto.name, dto.password);
+  }
+
+  @Post('password/login')
+  passwordLogin(@Body() dto: PasswordLoginDto) {
+    return this.authService.loginWithPassword(dto.name, dto.password);
   }
 }

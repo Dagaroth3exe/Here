@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../design/colors.dart';
 import '../design/typography.dart';
+import '../l10n/strings.dart';
 
 enum AppTab { home, discover, askHere, chats }
 
@@ -35,7 +36,7 @@ class AppTabBar extends StatelessWidget {
               for (final tab in AppTab.values)
                 Expanded(
                   child: _TabItem(
-                    label: _labels[tab]!,
+                    label: t(_labels[tab]!),
                     active: tab == current,
                     onTap: () => onSelect(tab),
                   ),
