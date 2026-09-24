@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../design/colors.dart';
 import '../../design/typography.dart';
 
@@ -46,10 +47,21 @@ class AuthTextField extends StatelessWidget {
         ),
         decoration: InputDecoration(
           labelText: label,
-          labelStyle: AppText.meta.copyWith(color: colors.ink45),
+          labelStyle: AppText.reputationLine.copyWith(color: colors.ink70),
           counterText: '',
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide(color: colors.green, width: 1.5),
+          ),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 14,
+          ),
         ),
       ),
     );
@@ -57,7 +69,12 @@ class AuthTextField extends StatelessWidget {
 }
 
 class PrimaryAuthButton extends StatelessWidget {
-  const PrimaryAuthButton({super.key, required this.label, required this.onTap, this.loading = false});
+  const PrimaryAuthButton({
+    super.key,
+    required this.label,
+    required this.onTap,
+    this.loading = false,
+  });
 
   final String label;
   final VoidCallback? onTap;
@@ -72,19 +89,34 @@ class PrimaryAuthButton extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         width: double.infinity,
-        height: 50,
+        height: 54,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: enabled ? colors.green : colors.green.withValues(alpha: 0.5),
           borderRadius: BorderRadius.circular(14),
+          boxShadow: enabled
+              ? [
+                  BoxShadow(
+                    color: colors.green.withValues(alpha: 0.16),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                ]
+              : const [],
         ),
         child: loading
             ? SizedBox(
                 width: 20,
                 height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white.withValues(alpha: 0.9)),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.4,
+                  color: Colors.white.withValues(alpha: 0.9),
+                ),
               )
-            : Text(label, style: AppText.pingButton.copyWith(color: Colors.white)),
+            : Text(
+                label,
+                style: AppText.pingButton.copyWith(color: Colors.white),
+              ),
       ),
     );
   }
@@ -101,10 +133,17 @@ class AuthErrorBanner extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(color: colors.errorTint, borderRadius: BorderRadius.circular(10)),
+      decoration: BoxDecoration(
+        color: colors.errorTint,
+        borderRadius: BorderRadius.circular(10),
+      ),
       child: Text(
         message,
-        style: TextStyle(fontFamily: 'Outfit', fontSize: 12.5, color: colors.error),
+        style: TextStyle(
+          fontFamily: 'Outfit',
+          fontSize: 12.5,
+          color: colors.error,
+        ),
       ),
     );
   }
@@ -122,7 +161,12 @@ class AuthLink extends StatelessWidget {
       onTap: onTap,
       child: Text(
         text,
-        style: TextStyle(fontFamily: 'Outfit', fontWeight: FontWeight.w500, fontSize: 13, color: context.colors.greenInk),
+        style: TextStyle(
+          fontFamily: 'Outfit',
+          fontWeight: FontWeight.w500,
+          fontSize: 13,
+          color: context.colors.greenInk,
+        ),
       ),
     );
   }

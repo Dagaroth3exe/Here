@@ -1,17 +1,24 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../design/colors.dart';
 import '../design/typography.dart';
 import '../l10n/app_locale.dart';
 import '../l10n/strings.dart';
 import '../services/auth_session.dart';
 import '../services/chat_api.dart';
+import '../services/chat_notifications.dart';
 import '../services/realtime_service.dart';
 import '../utils/initials.dart';
 
 class _ThreadMessage {
-  const _ThreadMessage({required this.fromId, required this.body, required this.createdAt});
+  const _ThreadMessage({
+    required this.fromId,
+    required this.body,
+    required this.createdAt,
+  });
 
   final String fromId;
   final String body;
@@ -19,7 +26,11 @@ class _ThreadMessage {
 }
 
 class ChatThreadScreen extends StatefulWidget {
-  const ChatThreadScreen({super.key, required this.otherUserId, required this.otherName});
+  const ChatThreadScreen({
+    super.key,
+    required this.otherUserId,
+    required this.otherName,
+  });
 
   final String otherUserId;
   final String otherName;
@@ -38,11 +49,20 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   @override
   void initState() {
     super.initState();
+    ChatNotifications.instance.openThreadUserId = widget.otherUserId;
     _chatSub = RealtimeService.instance.chatStream.listen((message) {
-      final isThisThread = message.fromId == widget.otherUserId || message.targetId == widget.otherUserId;
+      final isThisThread =
+          message.fromId == widget.otherUserId ||
+          message.targetId == widget.otherUserId;
       if (!isThisThread) return;
       setState(() {
-        _messages.add(_ThreadMessage(fromId: message.fromId, body: message.body, createdAt: message.createdAt));
+        _messages.add(
+          _ThreadMessage(
+            fromId: message.fromId,
+            body: message.body,
+            createdAt: message.createdAt,
+          ),
+        );
       });
       _scrollToBottom();
     });
@@ -60,7 +80,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       if (!mounted) return;
       setState(() {
         _messages.addAll(
-          history.map((m) => _ThreadMessage(fromId: m.senderId, body: m.body, createdAt: m.createdAt)),
+          history.map(
+            (m) => _ThreadMessage(
+              fromId: m.senderId,
+              body: m.body,
+              createdAt: m.createdAt,
+            ),
+          ),
         );
         _loading = false;
       });
@@ -90,6 +116,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   @override
   void dispose() {
+    if (ChatNotifications.instance.openThreadUserId == widget.otherUserId) {
+      ChatNotifications.instance.openThreadUserId = null;
+    }
     _chatSub?.cancel();
     _controller.dispose();
     _scrollController.dispose();
@@ -115,14 +144,25 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               width: 34,
               height: 34,
               alignment: Alignment.center,
-              decoration: BoxDecoration(color: colors.sandDeep, shape: BoxShape.circle),
+              decoration: BoxDecoration(
+                color: colors.sandDeep,
+                shape: BoxShape.circle,
+              ),
               child: Text(
                 initialsFor(widget.otherName),
-                style: TextStyle(fontFamily: 'Outfit', fontWeight: FontWeight.w600, fontSize: 12, color: colors.inkMutedAvatar),
+                style: TextStyle(
+                  fontFamily: 'Outfit',
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                  color: colors.inkMutedAvatar,
+                ),
               ),
             ),
             const SizedBox(width: 10),
-            Text(widget.otherName, style: AppText.personName.copyWith(color: colors.ink)),
+            Text(
+              widget.otherName,
+              style: AppText.personName.copyWith(color: colors.ink),
+            ),
           ],
         ),
       ),
@@ -132,24 +172,31 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           children: [
             Expanded(
               child: _loading
-                  ? const SizedBox.shrink()
+                  ? Center(
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: colors.green,
+                      ),
+                    )
                   : _messages.isEmpty
-                      ? Center(
-                          child: Text(
-                            t('Say hi to start the conversation.'),
-                            style: AppText.reputationLine.copyWith(color: colors.ink50),
-                          ),
-                        )
-                      : ListView.builder(
-                          controller: _scrollController,
-                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                          itemCount: _messages.length,
-                          itemBuilder: (context, index) {
-                            final message = _messages[index];
-                            final isMine = message.fromId == myId;
-                            return _MessageBubble(message: message, isMine: isMine);
-                          },
+                  ? Center(
+                      child: Text(
+                        t('Say hi to start the conversation.'),
+                        style: AppText.reputationLine.copyWith(
+                          color: colors.ink50,
                         ),
+                      ),
+                    )
+                  : ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      itemCount: _messages.length,
+                      itemBuilder: (context, index) {
+                        final message = _messages[index];
+                        final isMine = message.fromId == myId;
+                        return _MessageBubble(message: message, isMine: isMine);
+                      },
+                    ),
             ),
             _Composer(controller: _controller, onSend: _send),
           ],
@@ -168,14 +215,17 @@ class _MessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final time = DateFormat.Hm(AppLocale.current.value.languageCode).format(message.createdAt);
+    final time = DateFormat.Hm(AppLocale.current.value.languageCode)
+        .format(message.createdAt);
 
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.72),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.72,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
           color: isMine ? colors.green : colors.surface,
           borderRadius: BorderRadius.only(
@@ -192,14 +242,18 @@ class _MessageBubble extends StatelessWidget {
           children: [
             Text(
               message.body,
-              style: AppText.reputationLine.copyWith(color: isMine ? Colors.white : colors.ink),
+              style: AppText.reputationLine.copyWith(
+                color: isMine ? Colors.white : colors.ink,
+              ),
             ),
             const SizedBox(height: 3),
             Text(
               time,
               style: AppText.meta.copyWith(
                 fontSize: 10,
-                color: isMine ? Colors.white.withValues(alpha: 0.75) : colors.ink38,
+                color: isMine
+                    ? Colors.white.withValues(alpha: 0.75)
+                    : colors.ink38,
               ),
             ),
           ],
@@ -236,12 +290,19 @@ class _Composer extends StatelessWidget {
                 minLines: 1,
                 maxLines: 4,
                 textCapitalization: TextCapitalization.sentences,
-                style: TextStyle(fontFamily: 'Outfit', fontSize: 14.5, color: colors.ink),
+                style: TextStyle(
+                  fontFamily: 'Outfit',
+                  fontSize: 14.5,
+                  color: colors.ink,
+                ),
                 decoration: InputDecoration(
                   hintText: t('Type a message...'),
                   hintStyle: AppText.meta.copyWith(color: colors.ink38),
                   border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                 ),
                 onSubmitted: (_) => onSend(),
               ),
@@ -254,8 +315,15 @@ class _Composer extends StatelessWidget {
               width: 44,
               height: 44,
               alignment: Alignment.center,
-              decoration: BoxDecoration(color: colors.green, shape: BoxShape.circle),
-              child: const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 20),
+              decoration: BoxDecoration(
+                color: colors.green,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.arrow_upward_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
             ),
           ),
         ],

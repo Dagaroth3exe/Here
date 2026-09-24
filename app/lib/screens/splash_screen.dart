@@ -2,6 +2,8 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import '../design/colors.dart';
 import '../design/typography.dart';
+import '../services/auth_session.dart';
+import '../shell.dart';
 import 'auth/auth_screen.dart';
 
 /// App-open intro: the HERE mascot pops in and waves through a short sprite
@@ -64,6 +66,19 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   void _onIntroFinished() {
     if (_navigated) return;
     _navigated = true;
+
+    if (AuthSession.isLoggedIn) {
+      Navigator.of(context).pushReplacement(
+        PageRouteBuilder(
+          pageBuilder: (context, animation, secondaryAnimation) => const HereShell(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+              FadeTransition(opacity: animation, child: child),
+          transitionDuration: const Duration(milliseconds: 350),
+        ),
+      );
+      return;
+    }
+
     // A real (non-zero) transition, so the "here-wordmark" Hero actually
     // flies and grows from the bubble here into the title on AuthScreen.
     Navigator.of(context).pushReplacement(

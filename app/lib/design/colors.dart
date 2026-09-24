@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/accent_controller.dart';
 
 /// Design tokens ported from the HERE design handoff (Home / Discover),
 /// with a dark variant added alongside the original light palette.
@@ -46,6 +47,12 @@ class AppColors {
     required this.switchTrackOff,
     required this.error,
     required this.errorTint,
+    required this.trust,
+    required this.trustTint,
+    required this.success,
+    required this.successTint,
+    required this.dating,
+    required this.datingTint,
   });
 
   final Color paper;
@@ -93,10 +100,30 @@ class AppColors {
   final Color error;
   final Color errorTint;
 
+  /// Reputation/trust signals only (badges, ratings, "Trusted Helper") — a
+  /// warm gold, deliberately not the brand purple so earned trust reads as
+  /// its own kind of signal rather than just another primary action.
+  final Color trust;
+  final Color trustTint;
+
+  /// Positive/completed states only (an accepted Ping, a resolved Ask HERE
+  /// request) — a true green, distinct from the purple `green*` family so a
+  /// state actually *changing* to done is visually obvious.
+  final Color success;
+  final Color successTint;
+
+  /// Reserved for the "Dating / Meeting someone" reachability category and
+  /// anything tied to it — kept visually separate everywhere it appears so
+  /// that opt-in social/dating intent never blends into the general
+  /// help/advice categories, matching the product's explicit separation of
+  /// the two.
+  final Color dating;
+  final Color datingTint;
+
   static const light = AppColors(
-    paper: Color(0xFFF7F4FC),
+    paper: Color(0xFFFAF9FD),
     surface: Color(0xFFFFFFFF),
-    sand: Color(0xFFEDE7F6),
+    sand: Color(0xFFF0ECF7),
     sandDeep: Color(0xFFDDD0F0),
     sandBlock: Color(0xFFE3DAF3),
     ink: Color(0xFF221733),
@@ -109,7 +136,7 @@ class AppColors {
     ink38: Color.fromRGBO(34, 23, 51, 0.38),
     ink35: Color.fromRGBO(34, 23, 51, 0.35),
     inkMutedAvatar: Color(0xFF7A6B94),
-    green: Color(0xFF8457E8),
+    green: Color(0xFF7047D6),
     greenInk: Color(0xFF5A3FA0),
     greenInkDeep: Color(0xFF3E2B73),
     greenTint: Color(0xFFF1EBFB),
@@ -128,12 +155,18 @@ class AppColors {
     switchTrackOff: Color.fromRGBO(34, 23, 51, 0.1),
     error: Color(0xFFB54A3C),
     errorTint: Color(0xFFFBEAE7),
+    trust: Color(0xFFC98A2E),
+    trustTint: Color(0xFFF6ECDA),
+    success: Color(0xFF2E9B5F),
+    successTint: Color(0xFFE3F3E9),
+    dating: Color(0xFFD6608A),
+    datingTint: Color(0xFFFBE9EF),
   );
 
   static const dark = AppColors(
-    paper: Color(0xFF231B30),
-    surface: Color(0xFF2E2340),
-    sand: Color(0xFF352844),
+    paper: Color(0xFF17141F),
+    surface: Color(0xFF24202F),
+    sand: Color(0xFF2D273B),
     sandDeep: Color(0xFF43324F),
     sandBlock: Color(0xFF3B2C4A),
     ink: Color(0xFFEDEAF5),
@@ -165,10 +198,99 @@ class AppColors {
     switchTrackOff: Color.fromRGBO(237, 234, 245, 0.12),
     error: Color(0xFFE8877A),
     errorTint: Color(0xFF3A2420),
+    trust: Color(0xFFE0B15C),
+    trustTint: Color(0xFF3A3222),
+    success: Color(0xFF5FC98A),
+    successTint: Color(0xFF20362A),
+    dating: Color(0xFFE88AAD),
+    datingTint: Color(0xFF3A2530),
   );
 
-  static AppColors of(BuildContext context) =>
-      Theme.of(context).brightness == Brightness.dark ? dark : light;
+  static AppColors of(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return (isDark ? dark : light).resolveAccent(dark: isDark);
+  }
+
+  /// Applies the current [AccentController] hue (if any) on top of this
+  /// palette — used both by [of] and by `main.dart`'s `MaterialApp` theme,
+  /// which needs the resolved colors before a [BuildContext] even exists.
+  AppColors resolveAccent({required bool dark}) {
+    final hue = AccentController.hue.value;
+    return hue == null ? this : _withAccentHue(hue, dark: dark);
+  }
+
+  /// Recomputes the brand-accent family (`green*`/`reachable*`/`status*On`)
+  /// plus the neutral surfaces (`paper`/`surface`/`sand*`/`mapHalo`/
+  /// `mapOverlay`) at a new hue, leaving error/trust/success/dating
+  /// untouched. The accent family uses fixed saturation/lightness lifted
+  /// from the default purple above, so any hue reads equally vivid; the
+  /// neutrals instead keep *their own* saturation/lightness and just pivot
+  /// hue, since paper/surface/sand were never flat gray to begin with —
+  /// they've always carried a faint tint of the accent (which is exactly
+  /// why leaving them fixed made every avatar's "dark grey" look identical).
+  AppColors _withAccentHue(double hue, {required bool dark}) {
+    Color hsl(double s, double l) => HSLColor.fromAHSL(1, hue, s, l).toColor();
+    Color rehue(Color original) => HSLColor.fromColor(original).withHue(hue).toColor();
+
+    final Color accent;
+    final Color accentInk;
+    final Color accentInkDeep;
+    final Color accentTint;
+    if (!dark) {
+      accent = hsl(0.636, 0.559);
+      accentInk = hsl(0.435, 0.437);
+      accentInkDeep = hsl(0.456, 0.310);
+      accentTint = hsl(0.667, 0.953);
+    } else {
+      accent = hsl(0.759, 0.625);
+      accentInk = hsl(1.0, 0.814);
+      accentInkDeep = hsl(1.0, 0.894);
+      accentTint = hsl(0.353, 0.200);
+    }
+
+    return AppColors(
+      paper: rehue(paper),
+      surface: rehue(surface),
+      sand: rehue(sand),
+      sandDeep: rehue(sandDeep),
+      sandBlock: rehue(sandBlock),
+      ink: ink,
+      ink70: ink70,
+      ink55: ink55,
+      ink50: ink50,
+      ink45: ink45,
+      ink42: ink42,
+      ink40: ink40,
+      ink38: ink38,
+      ink35: ink35,
+      inkMutedAvatar: inkMutedAvatar,
+      green: accent,
+      greenInk: accentInk,
+      greenInkDeep: accentInkDeep,
+      greenTint: accentTint,
+      greenTintBadge: (dark ? accentInk : accent).withValues(alpha: dark ? 0.16 : 0.1),
+      greenTrack: (dark ? accentInk : accent).withValues(alpha: dark ? 0.30 : 0.2),
+      hairline: hairline,
+      hairlineChip: hairlineChip,
+      hairlineDashed: hairlineDashed,
+      reachableCardBorder: (dark ? accentInk : accent).withValues(alpha: dark ? 0.35 : 0.28),
+      reachableStatBorder: (dark ? accentInk : accent).withValues(alpha: dark ? 0.24 : 0.18),
+      mapHalo: rehue(mapHalo),
+      mapOverlay: rehue(mapOverlay),
+      nonReachableDot: nonReachableDot,
+      statusEyebrowOn: accentInk.withValues(alpha: dark ? 0.75 : 0.7),
+      statusSubtextOn: accentInkDeep.withValues(alpha: dark ? 0.62 : 0.68),
+      switchTrackOff: switchTrackOff,
+      error: error,
+      errorTint: errorTint,
+      trust: trust,
+      trustTint: trustTint,
+      success: success,
+      successTint: successTint,
+      dating: dating,
+      datingTint: datingTint,
+    );
+  }
 }
 
 /// Ergonomic access: `context.colors.ink` instead of `AppColors.of(context).ink`.

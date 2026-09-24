@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+
 import 'design/colors.dart';
 import 'l10n/app_locale.dart';
 import 'screens/splash_screen.dart';
+import 'services/accent_controller.dart';
+import 'services/auth_session.dart';
 import 'services/theme_controller.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await AuthSession.restore();
   runApp(const HereApp());
 }
 
@@ -15,7 +20,11 @@ void main() {
 /// subtle glow instead.
 class _AppScrollBehavior extends MaterialScrollBehavior {
   @override
-  Widget buildOverscrollIndicator(BuildContext context, Widget child, ScrollableDetails details) {
+  Widget buildOverscrollIndicator(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
     return GlowingOverscrollIndicator(
       axisDirection: details.direction,
       color: context.colors.ink.withValues(alpha: 0.06),
@@ -35,40 +44,48 @@ class HereApp extends StatelessWidget {
         return ValueListenableBuilder<Locale>(
           valueListenable: AppLocale.current,
           builder: (context, locale, _) {
-            return MaterialApp(
-              title: 'HERE',
-              locale: locale,
-              supportedLocales: AppLocale.supported,
-              localizationsDelegates: const [
-                GlobalMaterialLocalizations.delegate,
-                GlobalWidgetsLocalizations.delegate,
-                GlobalCupertinoLocalizations.delegate,
-              ],
-              theme: ThemeData(
-                useMaterial3: true,
-                brightness: Brightness.light,
-                fontFamily: 'Outfit',
-                scaffoldBackgroundColor: AppColors.light.paper,
-                colorScheme: ColorScheme.fromSeed(
-                  seedColor: AppColors.light.green,
-                  brightness: Brightness.light,
-                  surface: AppColors.light.paper,
-                ),
-              ),
-              darkTheme: ThemeData(
-                useMaterial3: true,
-                brightness: Brightness.dark,
-                fontFamily: 'Outfit',
-                scaffoldBackgroundColor: AppColors.dark.paper,
-                colorScheme: ColorScheme.fromSeed(
-                  seedColor: AppColors.dark.green,
-                  brightness: Brightness.dark,
-                  surface: AppColors.dark.paper,
-                ),
-              ),
-              themeMode: themeMode,
-              scrollBehavior: _AppScrollBehavior(),
-              home: const SplashScreen(),
+            return ValueListenableBuilder<double?>(
+              valueListenable: AccentController.hue,
+              builder: (context, _, _) {
+                final lightColors = AppColors.light.resolveAccent(dark: false);
+                final darkColors = AppColors.dark.resolveAccent(dark: true);
+                return MaterialApp(
+                  debugShowCheckedModeBanner: false,
+                  title: 'HERE',
+                  locale: locale,
+                  supportedLocales: AppLocale.supported,
+                  localizationsDelegates: const [
+                    GlobalMaterialLocalizations.delegate,
+                    GlobalWidgetsLocalizations.delegate,
+                    GlobalCupertinoLocalizations.delegate,
+                  ],
+                  theme: ThemeData(
+                    useMaterial3: true,
+                    brightness: Brightness.light,
+                    fontFamily: 'Outfit',
+                    scaffoldBackgroundColor: lightColors.paper,
+                    colorScheme: ColorScheme.fromSeed(
+                      seedColor: lightColors.green,
+                      brightness: Brightness.light,
+                      surface: lightColors.paper,
+                    ),
+                  ),
+                  darkTheme: ThemeData(
+                    useMaterial3: true,
+                    brightness: Brightness.dark,
+                    fontFamily: 'Outfit',
+                    scaffoldBackgroundColor: darkColors.paper,
+                    colorScheme: ColorScheme.fromSeed(
+                      seedColor: darkColors.green,
+                      brightness: Brightness.dark,
+                      surface: darkColors.paper,
+                    ),
+                  ),
+                  themeMode: themeMode,
+                  scrollBehavior: _AppScrollBehavior(),
+                  home: const SplashScreen(),
+                );
+              },
             );
           },
         );

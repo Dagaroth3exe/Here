@@ -5,6 +5,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { UsersModule } from '../users/users.module.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
+import { SmsService } from './sms.service.js';
+import { SocialAuthService } from './social-auth.service.js';
 import { TotpCredential } from './totp-credential.entity.js';
 import { TotpCrypto } from './totp-crypto.js';
 import { WebauthnCredential } from './webauthn-credential.entity.js';
@@ -22,6 +24,6 @@ import { WebauthnCredential } from './webauthn-credential.entity.js';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, TotpCrypto],
+  providers: [AuthService, TotpCrypto, SmsService, SocialAuthService],
 })
 export class AuthModule {}

@@ -1,7 +1,11 @@
 import { Body, Controller, Post } from '@nestjs/common';
 import { AuthService } from './auth.service.js';
+import { AppleSignInDto } from './dto/apple-signin.dto.js';
 import { AuthenticationOptionsDto } from './dto/authentication-options.dto.js';
 import { AuthenticationVerificationDto } from './dto/authentication-verification.dto.js';
+import { GoogleSignInDto } from './dto/google-signin.dto.js';
+import { OtpRequestDto } from './dto/otp-request.dto.js';
+import { OtpVerifyDto } from './dto/otp-verify.dto.js';
 import { PasswordLoginDto } from './dto/password-login.dto.js';
 import { PasswordSignupDto } from './dto/password-signup.dto.js';
 import { RegistrationOptionsDto } from './dto/registration-options.dto.js';
@@ -57,5 +61,25 @@ export class AuthController {
   @Post('password/login')
   passwordLogin(@Body() dto: PasswordLoginDto) {
     return this.authService.loginWithPassword(dto.name, dto.password);
+  }
+
+  @Post('otp/request')
+  otpRequest(@Body() dto: OtpRequestDto) {
+    return this.authService.requestOtp(dto.phone);
+  }
+
+  @Post('otp/verify')
+  otpVerify(@Body() dto: OtpVerifyDto) {
+    return this.authService.verifyOtp(dto.phone, dto.code);
+  }
+
+  @Post('google')
+  googleSignIn(@Body() dto: GoogleSignInDto) {
+    return this.authService.loginOrSignupWithGoogle(dto.idToken);
+  }
+
+  @Post('apple')
+  appleSignIn(@Body() dto: AppleSignInDto) {
+    return this.authService.loginOrSignupWithApple(dto.idToken, dto.fullName);
   }
 }

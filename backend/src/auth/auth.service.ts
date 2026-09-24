@@ -2,6 +2,7 @@ import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
+import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
 import type { Redis } from 'ioredis';
 import { generateSecret, generateURI, verify as verifyTotp } from 'otplib';
 import {
@@ -20,6 +21,8 @@ import { REDIS_CLIENT } from '../redis/redis.module.js';
 import { User } from '../users/user.entity.js';
 import { UsersService } from '../users/users.service.js';
 import { hashPassword, verifyPassword } from './password.util.js';
+import { SmsService } from './sms.service.js';
+import { SocialAuthService } from './social-auth.service.js';
 import { TotpCrypto } from './totp-crypto.js';
 import { TotpCredential } from './totp-credential.entity.js';
 import { WebauthnCredential } from './webauthn-credential.entity.js';
@@ -29,11 +32,17 @@ const TOTP_PERIOD_SECONDS = 30;
 /** ±1 time step of clock drift tolerance, matching typical authenticator apps. */
 const TOTP_EPOCH_TOLERANCE_SECONDS = 30;
 
+const OTP_CODE_TTL_SECONDS = 5 * 60;
+const OTP_RESEND_COOLDOWN_SECONDS = 60;
+const OTP_MAX_REQUESTS_PER_HOUR = 5;
+const OTP_MAX_VERIFY_ATTEMPTS = 5;
+
 @Injectable()
 export class AuthService {
   private readonly rpName: string;
   private readonly rpID: string;
   private readonly origin: string;
+  private readonly otpHashPepper: string;
 
   constructor(
     private readonly usersService: UsersService,
@@ -45,10 +54,13 @@ export class AuthService {
     @InjectRepository(TotpCredential)
     private readonly totpRepository: Repository<TotpCredential>,
     private readonly totpCrypto: TotpCrypto,
+    private readonly smsService: SmsService,
+    private readonly socialAuthService: SocialAuthService,
   ) {
     this.rpName = this.configService.getOrThrow('RP_NAME');
     this.rpID = this.configService.getOrThrow('RP_ID');
     this.origin = this.configService.getOrThrow('ORIGIN');
+    this.otpHashPepper = this.configService.getOrThrow('OTP_HASH_PEPPER');
   }
 
   private challengeKey(email: string): string {
@@ -307,7 +319,146 @@ export class AuthService {
     return { accessToken: this.issueToken(user) };
   }
 
+  private otpCodeKey(phone: string): string {
+    return `otp:code:${phone}`;
+  }
+
+  private otpAttemptsKey(phone: string): string {
+    return `otp:attempts:${phone}`;
+  }
+
+  private otpCooldownKey(phone: string): string {
+    return `otp:cooldown:${phone}`;
+  }
+
+  private otpRequestCountKey(phone: string): string {
+    return `otp:requests:${phone}`;
+  }
+
+  private hashOtp(phone: string, code: string): string {
+    return createHmac('sha256', this.otpHashPepper).update(`${phone}:${code}`).digest('hex');
+  }
+
+  async requestOtp(phone: string): Promise<{ retryAfterSeconds: number }> {
+    if (await this.redis.get(this.otpCooldownKey(phone))) {
+      throw new UnauthorizedException('Please wait before requesting another code');
+    }
+
+    const requestCount = await this.redis.incr(this.otpRequestCountKey(phone));
+    if (requestCount === 1) {
+      await this.redis.expire(this.otpRequestCountKey(phone), 3600);
+    }
+    if (requestCount > OTP_MAX_REQUESTS_PER_HOUR) {
+      throw new UnauthorizedException('Too many codes requested for this number, try again later');
+    }
+
+    const code = randomInt(0, 1_000_000).toString().padStart(6, '0');
+    await this.redis.set(
+      this.otpCodeKey(phone),
+      this.hashOtp(phone, code),
+      'EX',
+      OTP_CODE_TTL_SECONDS,
+    );
+    await this.redis.del(this.otpAttemptsKey(phone));
+    await this.redis.set(this.otpCooldownKey(phone), '1', 'EX', OTP_RESEND_COOLDOWN_SECONDS);
+
+    await this.smsService.sendOtpSms(phone, code);
+
+    return { retryAfterSeconds: OTP_RESEND_COOLDOWN_SECONDS };
+  }
+
+  async verifyOtp(phone: string, code: string): Promise<{ accessToken: string }> {
+    const storedHash = await this.redis.get(this.otpCodeKey(phone));
+    if (!storedHash) {
+      throw new UnauthorizedException('Code expired or not requested, request a new one');
+    }
+
+    const attempts = await this.redis.incr(this.otpAttemptsKey(phone));
+    if (attempts === 1) {
+      await this.redis.expire(this.otpAttemptsKey(phone), OTP_CODE_TTL_SECONDS);
+    }
+    if (attempts > OTP_MAX_VERIFY_ATTEMPTS) {
+      await this.redis.del(this.otpCodeKey(phone), this.otpAttemptsKey(phone));
+      throw new UnauthorizedException('Too many incorrect attempts, request a new code');
+    }
+
+    const suppliedHash = this.hashOtp(phone, code);
+    const match =
+      suppliedHash.length === storedHash.length &&
+      timingSafeEqual(Buffer.from(suppliedHash), Buffer.from(storedHash));
+    if (!match) {
+      throw new UnauthorizedException('Incorrect code');
+    }
+
+    await this.redis.del(this.otpCodeKey(phone), this.otpAttemptsKey(phone));
+
+    const user =
+      (await this.usersService.findByPhone(phone)) ??
+      (await this.usersService.createWithPhone(phone));
+    return { accessToken: this.issueToken(user) };
+  }
+
+  async loginOrSignupWithGoogle(idToken: string): Promise<{ accessToken: string }> {
+    const { subject, email, emailVerified, name } =
+      await this.socialAuthService.verifyGoogleToken(idToken);
+    const user = await this.findOrCreateSocialUser({
+      provider: 'google',
+      subject,
+      name,
+      email: emailVerified ? email : null,
+    });
+    return { accessToken: this.issueToken(user) };
+  }
+
+  async loginOrSignupWithApple(
+    idToken: string,
+    fullName?: string,
+  ): Promise<{ accessToken: string }> {
+    const { subject, email } = await this.socialAuthService.verifyAppleToken(idToken);
+    const user = await this.findOrCreateSocialUser({
+      provider: 'apple',
+      subject,
+      email,
+      name: fullName ?? null,
+    });
+    return { accessToken: this.issueToken(user) };
+  }
+
+  private async findOrCreateSocialUser(input: {
+    provider: 'google' | 'apple';
+    subject: string;
+    email: string | null;
+    name: string | null;
+  }): Promise<User> {
+    const { provider, subject, email, name } = input;
+
+    const bySubject =
+      provider === 'google'
+        ? await this.usersService.findByGoogleId(subject)
+        : await this.usersService.findByAppleId(subject);
+    if (bySubject) return bySubject;
+
+    if (email) {
+      const byEmail = await this.usersService.findByEmail(email);
+      if (byEmail) {
+        if (provider === 'google') {
+          byEmail.googleId = subject;
+        } else {
+          byEmail.appleId = subject;
+        }
+        return this.usersService.save(byEmail);
+      }
+    }
+
+    return this.usersService.createWithSocial({ provider, subject, email, name });
+  }
+
   private issueToken(user: User): string {
-    return this.jwtService.sign({ sub: user.id, email: user.email, username: user.username });
+    return this.jwtService.sign({
+      sub: user.id,
+      email: user.email,
+      username: user.username,
+      displayName: user.displayName,
+    });
   }
 }

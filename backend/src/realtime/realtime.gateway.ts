@@ -17,6 +17,7 @@ interface JwtPayload {
   sub: string;
   email?: string | null;
   username?: string | null;
+  displayName?: string | null;
 }
 
 interface ConnectedUser {
@@ -61,7 +62,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     }
 
     const id = payload.sub;
-    const name = payload.username ?? payload.email ?? 'Someone';
+    const name = payload.username ?? payload.displayName ?? payload.email ?? 'Someone';
     socket.hereUserId = id;
     this.users.set(id, { socket, id, name });
     this.logger.log(`${name} connected (${this.users.size} reachable)`);

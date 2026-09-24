@@ -21,7 +21,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     try {
       final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 85);
       if (picked != null) {
-        AvatarController.selected.value = picked.path;
+        AvatarController.select(picked.path);
         if (mounted) Navigator.of(context).pop();
       }
     } finally {
@@ -71,7 +71,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         return GestureDetector(
                           key: Key('avatarOption_${index - 1}'),
                           onTap: () {
-                            AvatarController.selected.value = asset;
+                            AvatarController.select(asset);
                             Navigator.of(context).pop();
                           },
                           child: Container(

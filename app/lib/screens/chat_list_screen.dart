@@ -1,6 +1,8 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../design/colors.dart';
 import '../design/typography.dart';
 import '../l10n/app_locale.dart';
@@ -9,6 +11,7 @@ import '../services/auth_session.dart';
 import '../services/chat_api.dart';
 import '../services/realtime_service.dart';
 import '../utils/initials.dart';
+import '../widgets/empty_state.dart';
 import 'chat_thread_screen.dart';
 import 'new_chat_screen.dart';
 
@@ -18,10 +21,10 @@ class ChatListScreen extends StatefulWidget {
   const ChatListScreen({super.key});
 
   @override
-  State<ChatListScreen> createState() => _ChatListScreenState();
+  State<ChatListScreen> createState() => ChatListScreenState();
 }
 
-class _ChatListScreenState extends State<ChatListScreen> {
+class ChatListScreenState extends State<ChatListScreen> {
   List<ConversationSummary> _conversations = [];
   bool _loading = true;
   StreamSubscription<ChatMessage>? _chatSub;
@@ -50,6 +53,13 @@ class _ChatListScreenState extends State<ChatListScreen> {
       });
     });
   }
+
+  /// Re-fetches from the server — called on first mount and again every time
+  /// this tab is revisited, since [HereShell] keeps this screen alive in an
+  /// `IndexedStack` rather than rebuilding it (so `initState` alone would
+  /// only ever see conversation state as of the very first time you opened
+  /// the tab).
+  Future<void> refresh() => _load();
 
   Future<void> _load() async {
     final token = AuthSession.accessToken;
@@ -87,11 +97,14 @@ class _ChatListScreenState extends State<ChatListScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(22, 14, 22, 12),
+              padding: const EdgeInsets.fromLTRB(24, 28, 24, 18),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(t('Chats'), style: AppText.screenTitle.copyWith(color: colors.ink)),
+                  Text(
+                    t('Chats'),
+                    style: AppText.screenTitle.copyWith(color: colors.ink),
+                  ),
                   GestureDetector(
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(builder: (_) => const NewChatScreen()),
@@ -105,7 +118,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: colors.hairline),
                       ),
-                      child: Icon(Icons.edit_square, size: 18, color: colors.ink70),
+                      child: Icon(
+                        Icons.edit_square,
+                        size: 18,
+                        color: colors.ink70,
+                      ),
                     ),
                   ),
                 ],
@@ -113,28 +130,33 @@ class _ChatListScreenState extends State<ChatListScreen> {
             ),
             Expanded(
               child: _loading
-                  ? const SizedBox.shrink()
+                  ? Center(
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: colors.green,
+                      ),
+                    )
                   : _conversations.isEmpty
-                      ? _EmptyState(colors: colors)
-                      : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(22, 4, 22, 20),
-                          itemCount: _conversations.length,
-                          separatorBuilder: (_, _) => const SizedBox(height: 10),
-                          itemBuilder: (context, index) {
-                            final conversation = _conversations[index];
-                            return _ConversationRow(
-                              conversation: conversation,
-                              onTap: () => Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => ChatThreadScreen(
-                                    otherUserId: conversation.userId,
-                                    otherName: conversation.name,
-                                  ),
-                                ),
+                  ? _EmptyState(colors: colors)
+                  : ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(22, 4, 22, 20),
+                      itemCount: _conversations.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 10),
+                      itemBuilder: (context, index) {
+                        final conversation = _conversations[index];
+                        return _ConversationRow(
+                          conversation: conversation,
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => ChatThreadScreen(
+                                otherUserId: conversation.userId,
+                                otherName: conversation.name,
                               ),
-                            );
-                          },
-                        ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
             ),
           ],
         ),
@@ -150,25 +172,10 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              t('No conversations yet'),
-              style: AppText.personName.copyWith(color: colors.ink),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              t('Ping someone in Discover to start chatting.'),
-              textAlign: TextAlign.center,
-              style: AppText.reputationLine.copyWith(color: colors.ink50),
-            ),
-          ],
-        ),
-      ),
+    return HereEmptyState(
+      icon: Icons.chat_bubble_outline_rounded,
+      title: t('No conversations yet'),
+      description: t('Ping someone in Discover to start chatting.'),
     );
   }
 }
@@ -182,12 +189,13 @@ class _ConversationRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final time = DateFormat.Hm(AppLocale.current.value.languageCode).format(conversation.lastAt);
+    final time = DateFormat.Hm(AppLocale.current.value.languageCode)
+        .format(conversation.lastAt);
 
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: colors.surface,
           borderRadius: BorderRadius.circular(18),
@@ -196,13 +204,21 @@ class _ConversationRow extends StatelessWidget {
         child: Row(
           children: [
             Container(
-              width: 44,
-              height: 44,
+              width: 50,
+              height: 50,
               alignment: Alignment.center,
-              decoration: BoxDecoration(color: colors.sandDeep, shape: BoxShape.circle),
+              decoration: BoxDecoration(
+                color: colors.sandDeep,
+                shape: BoxShape.circle,
+              ),
               child: Text(
                 initialsFor(conversation.name),
-                style: TextStyle(fontFamily: 'Outfit', fontWeight: FontWeight.w600, fontSize: 13, color: colors.inkMutedAvatar),
+                style: TextStyle(
+                  fontFamily: 'Outfit',
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  color: colors.inkMutedAvatar,
+                ),
               ),
             ),
             const SizedBox(width: 12),
@@ -210,8 +226,13 @@ class _ConversationRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(conversation.name, style: AppText.personName.copyWith(color: colors.ink)),
-                  const SizedBox(height: 2),
+                  Text(
+                    conversation.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.personName.copyWith(color: colors.ink),
+                  ),
+                  const SizedBox(height: 5),
                   Text(
                     conversation.lastBody,
                     maxLines: 1,

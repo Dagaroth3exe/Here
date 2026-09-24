@@ -5,6 +5,8 @@ import 'screens/chat_list_screen.dart';
 import 'screens/coming_soon_screen.dart';
 import 'screens/discover_screen.dart';
 import 'screens/home_screen.dart';
+import 'services/chat_notifications.dart';
+import 'services/profile_controller.dart';
 import 'widgets/app_tab_bar.dart';
 
 class HereShell extends StatefulWidget {
@@ -16,13 +18,29 @@ class HereShell extends StatefulWidget {
 
 class _HereShellState extends State<HereShell> {
   AppTab _current = AppTab.home;
+  final _chatListKey = GlobalKey<ChatListScreenState>();
 
   Map<AppTab, Widget> get _screens => {
         AppTab.home: const HomeScreen(),
         AppTab.discover: const DiscoverScreen(),
         AppTab.askHere: ComingSoonScreen(label: t('Ask HERE')),
-        AppTab.chats: const ChatListScreen(),
+        AppTab.chats: ChatListScreen(key: _chatListKey),
       };
+
+  @override
+  void initState() {
+    super.initState();
+    ChatNotifications.instance.start();
+    ProfileController.load();
+  }
+
+  void _selectTab(AppTab tab) {
+    setState(() => _current = tab);
+    if (tab == AppTab.chats) {
+      ChatNotifications.instance.markAllRead();
+      _chatListKey.currentState?.refresh();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -37,7 +55,7 @@ class _HereShellState extends State<HereShell> {
       ),
       bottomNavigationBar: AppTabBar(
         current: _current,
-        onSelect: (tab) => setState(() => _current = tab),
+        onSelect: _selectTab,
       ),
     );
   }

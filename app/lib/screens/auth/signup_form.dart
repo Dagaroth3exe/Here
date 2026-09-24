@@ -35,7 +35,7 @@ class _SignupFormState extends State<SignupForm> {
     });
     try {
       final token = await AuthApi.signupWithPassword(_name.text.trim(), _password.text);
-      AuthSession.set(_name.text.trim(), token);
+      await AuthSession.set(_name.text.trim(), token);
       widget.onSuccess();
     } on AuthApiException catch (e) {
       setState(() => _error = e.message);

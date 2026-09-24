@@ -4,6 +4,8 @@ import '../design/typography.dart';
 import '../l10n/strings.dart';
 import '../services/auth_session.dart';
 import '../services/avatar_controller.dart';
+import '../services/profile_api.dart';
+import '../services/profile_controller.dart';
 import '../utils/initials.dart';
 import '../widgets/avatar_thumb.dart';
 import 'auth/auth_screen.dart';
@@ -13,8 +15,9 @@ import 'settings_screen.dart';
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
-  void _signOut(BuildContext context) {
-    AuthSession.clear();
+  Future<void> _signOut(BuildContext context) async {
+    await AuthSession.clear();
+    if (!context.mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const AuthScreen()),
       (route) => false,
@@ -71,6 +74,33 @@ class ProfileScreen extends StatelessWidget {
                     Text(name, style: AppText.screenTitle.copyWith(color: colors.ink)),
                     const SizedBox(height: 4),
                     Text(t('HERE member'), style: AppText.meta.copyWith(color: colors.ink45)),
+                    ValueListenableBuilder<UserProfile?>(
+                      valueListenable: ProfileController.current,
+                      builder: (context, profile, _) {
+                        final interests = profile?.interests ?? const [];
+                        if (interests.isEmpty) return const SizedBox.shrink();
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 14),
+                          child: Wrap(
+                            alignment: WrapAlignment.center,
+                            spacing: 7,
+                            runSpacing: 7,
+                            children: [
+                              for (final interest in interests)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: colors.sand,
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(color: colors.hairline),
+                                  ),
+                                  child: Text(interest, style: AppText.chipLabel.copyWith(color: colors.ink70)),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
                   ],
                 ),
               ),

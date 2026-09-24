@@ -53,6 +53,29 @@ class AuthApi {
     return json['accessToken'] as String;
   }
 
+  static Future<int> requestOtp(String phone) async {
+    final json = await _post('/auth/otp/request', {'phone': phone});
+    return json['retryAfterSeconds'] as int;
+  }
+
+  static Future<String> verifyOtp(String phone, String code) async {
+    final json = await _post('/auth/otp/verify', {'phone': phone, 'code': code});
+    return json['accessToken'] as String;
+  }
+
+  static Future<String> signInWithGoogle(String idToken) async {
+    final json = await _post('/auth/google', {'idToken': idToken});
+    return json['accessToken'] as String;
+  }
+
+  static Future<String> signInWithApple(String idToken, String? fullName) async {
+    final json = await _post('/auth/apple', {
+      'idToken': idToken,
+      if (fullName != null) 'fullName': fullName,
+    });
+    return json['accessToken'] as String;
+  }
+
   static Future<Map<String, dynamic>> _post(String path, Map<String, String> body) async {
     late final http.Response response;
     try {

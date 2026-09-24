@@ -30,7 +30,7 @@ class AppText {
   static const screenTitle = TextStyle(
     fontFamily: _baloo,
     fontWeight: FontWeight.w700,
-    fontSize: 26,
+    fontSize: 30,
     height: 1.15,
   );
 
@@ -49,9 +49,10 @@ class AppText {
   );
 
   static const sectionHeader = TextStyle(
-    fontFamily: _baloo,
+    fontFamily: _outfit,
     fontWeight: FontWeight.w600,
-    fontSize: 15,
+    fontSize: 17,
+    height: 1.35,
   );
 
   static const statusEyebrow = TextStyle(
@@ -64,7 +65,7 @@ class AppText {
   static const personName = TextStyle(
     fontFamily: _outfit,
     fontWeight: FontWeight.w600,
-    fontSize: 15.5,
+    fontSize: 16,
   );
 
   static const personAge = TextStyle(
@@ -76,8 +77,8 @@ class AppText {
   static const statusSubtext = TextStyle(
     fontFamily: _outfit,
     fontWeight: FontWeight.w400,
-    fontSize: 13,
-    height: 1.45,
+    fontSize: 14,
+    height: 1.5,
   );
 
   static const chipLabel = TextStyle(
@@ -95,14 +96,14 @@ class AppText {
   static const reputationLine = TextStyle(
     fontFamily: _outfit,
     fontWeight: FontWeight.w400,
-    fontSize: 12.5,
-    height: 1.45,
+    fontSize: 14,
+    height: 1.5,
   );
 
   static const meta = TextStyle(
     fontFamily: _outfit,
     fontWeight: FontWeight.w400,
-    fontSize: 11.5,
+    fontSize: 12,
   );
 
   static const reputationBadge = TextStyle(
