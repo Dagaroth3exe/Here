@@ -168,24 +168,41 @@ class _AskQuestionScreenState extends State<AskQuestionScreen> {
           )
         else
           for (final answer in _answers) _HereAnswerCard(answer: answer),
-        if (detail.replies.isNotEmpty || detail.summary.isNotEmpty) ...[
+        if (detail.replies.isNotEmpty || detail.summary.isNotEmpty || detail.webAnswer.isNotEmpty) ...[
           const SizedBox(height: 26),
           Text(t('Found when it was asked'), style: AppText.sectionHeader.copyWith(color: colors.ink)),
           const SizedBox(height: 10),
           AskSummaryCard(
-            stage: null,
-            area: detail.area,
+            title: t('What people say'),
+            icon: Icons.forum_outlined,
+            progress: null,
             answer: detail.summary,
             error: null,
-            replies: detail.replies,
-            onOpenReply: openLink,
+            citations: {for (final r in detail.replies) r.n: r.url},
+            onOpenCitation: openLink,
           ),
+          if (detail.webAnswer.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            AskSummaryCard(
+              title: t('From the web'),
+              icon: Icons.auto_awesome,
+              progress: null,
+              answer: detail.webAnswer,
+              error: null,
+              citations: {for (final s in detail.webSources) s.n: s.url},
+              onOpenCitation: openLink,
+            ),
+          ],
           if (detail.replies.isNotEmpty) const SizedBox(height: 12),
           for (final reply in detail.replies) CommunityReplyCard(reply: reply, onOpen: () => openLink(reply.url)),
         ],
         if (detail.places case final places? when places.places.isNotEmpty) ...[
           const SizedBox(height: 20),
           ClosestPlacesSection(places: places),
+        ],
+        if (detail.webSources.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          WebSourcesSection(sources: detail.webSources),
         ],
       ],
     );

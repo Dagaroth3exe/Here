@@ -1,6 +1,7 @@
 /**
- * The outside world Ask HERE reads from: the self-hosted SearXNG metasearch
- * and OpenStreetMap (Nominatim for area names, Overpass for places). Everything here is untrusted input — callers must treat it as
+ * The outside world Ask HERE reads from: the self-hosted SearXNG metasearch,
+ * the pages it finds, and OpenStreetMap (Nominatim for area names, Overpass
+ * for places). Everything here is untrusted input — callers must treat it as
  * data, never instructions.
  */
 
@@ -37,6 +38,18 @@ export async function searchWeb(searxngUrl: string, query: string, limit: number
     .filter((r) => r.url && r.title)
     .slice(0, limit)
     .map((r) => ({ title: r.title!, url: r.url!, snippet: r.content ?? '' }));
+}
+
+/** Readable text of a page, or '' if it can't be fetched quickly. */
+export async function fetchPageText(url: string, maxChars: number): Promise<string> {
+  try {
+    const response = await fetchWithTimeout(url, 5_000, { headers: { Accept: 'text/html' } });
+    const type = response.headers.get('content-type') ?? '';
+    if (!response.ok || !type.includes('text/html')) return '';
+    return htmlToText(await response.text()).slice(0, maxChars);
+  } catch {
+    return '';
+  }
 }
 
 /** Plain text from HTML (pages, Stack Exchange answer bodies). */

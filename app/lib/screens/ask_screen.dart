@@ -32,12 +32,14 @@ class _AskScreenState extends State<AskScreen> {
 
   String? _question;
   AskStage? _stage;
+  /// "What people say" (forum summary) and "From the web", as they stream in.
   final _answer = StringBuffer();
+  final _webAnswer = StringBuffer();
+  List<WebSource> _webSources = const [];
   List<CommunityReply> _replies = const [];
   AskPlaces? _places;
   List<PastQuestion> _similar = const [];
   String? _savedId;
-  String? _area;
   String? _error;
   bool _running = false;
 
@@ -83,11 +85,12 @@ class _AskScreenState extends State<AskScreen> {
       _question = question;
       _stage = AskStage.searching;
       _answer.clear();
+      _webAnswer.clear();
+      _webSources = const [];
       _replies = const [];
       _places = null;
       _similar = const [];
       _savedId = null;
-      _area = null;
       _error = null;
       _running = true;
     });
@@ -102,8 +105,9 @@ class _AskScreenState extends State<AskScreen> {
         switch (event) {
           case AskStatus(:final stage):
             _stage = stage;
-          case AskContext(:final area):
-            _area = area;
+          case AskContext():
+            // The area only shapes the server's search; nothing to show.
+            break;
           case AskSimilar(:final questions):
             _similar = questions;
           case AskReplies(:final replies):
@@ -112,6 +116,10 @@ class _AskScreenState extends State<AskScreen> {
             _places = event;
           case AskToken(:final text):
             _answer.write(text);
+          case AskWebSources(:final sources):
+            _webSources = sources;
+          case AskWebToken(:final text):
+            _webAnswer.write(text);
           case AskSaved(:final id):
             _savedId = id;
           case AskDone():
@@ -186,6 +194,20 @@ class _AskScreenState extends State<AskScreen> {
     );
   }
 
+  String? _communityProgress(AskStage? stage) => switch (stage) {
+        null => null,
+        AskStage.searching => t('Finding people who asked the same thing…'),
+        AskStage.reading => t('Reading their replies…'),
+        AskStage.answering => t('Summarising what they said…'),
+      };
+
+  String? _webProgress(AskStage? stage) => switch (stage) {
+        null => null,
+        AskStage.searching => t('Searching the web…'),
+        AskStage.reading => t('Reading pages…'),
+        AskStage.answering => t('Writing an answer…'),
+      };
+
   List<Widget> _landing(AppColors colors) => [
         Text(t('Try asking'), style: AppText.sectionHeader.copyWith(color: colors.ink)),
         const SizedBox(height: 12),
@@ -230,12 +252,23 @@ class _AskScreenState extends State<AskScreen> {
           const SizedBox(height: 16),
         ],
         AskSummaryCard(
-          stage: _running && _answer.isEmpty ? _stage : null,
-          area: _area,
+          title: t('What people say'),
+          icon: Icons.forum_outlined,
+          progress: _running && _answer.isEmpty ? _communityProgress(_stage) : null,
           answer: _answer.toString(),
           error: _error,
-          replies: _replies,
-          onOpenReply: openLink,
+          citations: {for (final r in _replies) r.n: r.url},
+          onOpenCitation: openLink,
+        ),
+        const SizedBox(height: 12),
+        AskSummaryCard(
+          title: t('From the web'),
+          icon: Icons.auto_awesome,
+          progress: _running && _webAnswer.isEmpty ? _webProgress(_stage) : null,
+          answer: _webAnswer.toString(),
+          error: _error,
+          citations: {for (final s in _webSources) s.n: s.url},
+          onOpenCitation: openLink,
         ),
         if (_replies.isNotEmpty) ...[
           const SizedBox(height: 20),
@@ -247,6 +280,10 @@ class _AskScreenState extends State<AskScreen> {
           const SizedBox(height: 20),
           ClosestPlacesSection(places: places),
         ],
+        if (_webSources.isNotEmpty && _webAnswer.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          WebSourcesSection(sources: _webSources),
+        ],
         if (_savedId case final id?) ...[
           const SizedBox(height: 20),
           _SharedNote(onView: () => _openQuestion(id)),
@@ -254,7 +291,7 @@ class _AskScreenState extends State<AskScreen> {
         if (!_running && _replies.isNotEmpty) ...[
           const SizedBox(height: 16),
           Text(
-            t('Replies are from Reddit and Stack Exchange users. The summary is AI-written, so check the replies.'),
+            t('Replies are from Reddit and Stack Exchange users. Both answers are AI-written, so check the sources.'),
             style: AppText.meta.copyWith(color: colors.ink42),
           ),
         ],

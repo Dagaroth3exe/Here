@@ -55,6 +55,8 @@ export class AskCommunityService {
     summary: string;
     replies: unknown[];
     places: AskQuestion['places'];
+    webAnswer: string;
+    webSources: unknown[];
   }): Promise<string> {
     const round = (value: number) => Math.round(value * 100) / 100;
     const saved = await this.questions.save(
@@ -68,6 +70,8 @@ export class AskCommunityService {
         summary: input.summary,
         replies: input.replies,
         places: input.places,
+        webAnswer: input.webAnswer,
+        webSources: input.webSources,
       }),
     );
     return saved.id;
@@ -116,6 +120,8 @@ export class AskCommunityService {
       summary: question.summary,
       replies: question.replies,
       places: question.places,
+      webAnswer: question.webAnswer,
+      webSources: question.webSources,
       answers: answers.map(
         (a): CommunityAnswer => ({
           id: a.id,

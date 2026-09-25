@@ -1,4 +1,36 @@
-/** Relevance helpers for picking which community replies to show. */
+/** Relevance helpers for picking which community replies and web passages to use. */
+
+const CHUNK_CHARS = 700;
+const MIN_CHUNK_CHARS = 80;
+
+/**
+ * Sentence-aware ~700-char chunks of a web page, each starting with the
+ * previous one's last sentence, so the relevant middle of a long page can be
+ * found instead of its first few thousand characters (usually navigation).
+ */
+export function chunkText(text: string, maxChunks: number): string[] {
+  const sentences = text
+    .split(/(?<=[.!?])\s+/)
+    // Scraped pages often have huge punctuation-free runs (menus, lists).
+    .flatMap((s) => (s.length > CHUNK_CHARS ? (s.match(new RegExp(`.{1,${CHUNK_CHARS}}`, 'g')) ?? []) : [s]));
+
+  const chunks: string[] = [];
+  let current: string[] = [];
+  let length = 0;
+  for (const sentence of sentences) {
+    if (length + sentence.length > CHUNK_CHARS && current.length > 0) {
+      chunks.push(current.join(' '));
+      if (chunks.length >= maxChunks) break;
+      const overlap = current.at(-1)!;
+      current = overlap.length < CHUNK_CHARS / 3 ? [overlap] : [];
+      length = current.reduce((n, s) => n + s.length + 1, 0);
+    }
+    current.push(sentence);
+    length += sentence.length + 1;
+  }
+  if (current.length > 0 && chunks.length < maxChunks) chunks.push(current.join(' '));
+  return chunks.filter((c) => c.length >= MIN_CHUNK_CHARS);
+}
 
 export interface Ranked {
   /** Which thread it came from. */

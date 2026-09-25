@@ -44,6 +44,21 @@ class CommunityReply {
       );
 }
 
+/// A web page (or the nearby-places list) the web answer cites as [n].
+class WebSource {
+  const WebSource({required this.n, required this.title, required this.url});
+
+  final int n;
+  final String title;
+  final String url;
+
+  /// "zomato.com" — shown under the title so people can judge the source.
+  String get site => Uri.tryParse(url)?.host.replaceFirst('www.', '') ?? url;
+
+  factory WebSource.fromJson(Map<String, dynamic> json) =>
+      WebSource(n: json['n'] as int, title: json['title'] as String, url: json['url'] as String);
+}
+
 class AskPlace {
   const AskPlace({
     required this.name,
@@ -131,6 +146,8 @@ class QuestionDetail {
     required this.summary,
     required this.replies,
     required this.places,
+    required this.webAnswer,
+    required this.webSources,
     required this.answers,
   });
 
@@ -144,6 +161,10 @@ class QuestionDetail {
   final String summary;
   final List<CommunityReply> replies;
   final AskPlaces? places;
+
+  /// The "From the web" answer shown when it was asked, and its sources.
+  final String webAnswer;
+  final List<WebSource> webSources;
   final List<HereAnswer> answers;
 
   factory QuestionDetail.fromJson(Map<String, dynamic> json) => QuestionDetail(
@@ -155,6 +176,11 @@ class QuestionDetail {
         summary: json['summary'] as String,
         replies: (json['replies'] as List).cast<Map<String, dynamic>>().map(CommunityReply.fromJson).toList(),
         places: json['places'] == null ? null : AskPlaces.fromJson(json['places'] as Map<String, dynamic>),
+        webAnswer: json['webAnswer'] as String? ?? '',
+        webSources: (json['webSources'] as List? ?? const [])
+            .cast<Map<String, dynamic>>()
+            .map(WebSource.fromJson)
+            .toList(),
         answers: (json['answers'] as List).cast<Map<String, dynamic>>().map(HereAnswer.fromJson).toList(),
       );
 }
@@ -208,6 +234,19 @@ class AskSaved extends AskEvent {
   final String id;
 }
 
+/// The sources behind the web answer.
+class AskWebSources extends AskEvent {
+  const AskWebSources(this.sources);
+  final List<WebSource> sources;
+}
+
+/// A piece of the "From the web" answer, as it's written.
+class AskWebToken extends AskEvent {
+  const AskWebToken(this.text);
+  final String text;
+}
+
+/// A piece of the "What people say" summary, as it's written.
 class AskToken extends AskEvent {
   const AskToken(this.text);
   final String text;
@@ -313,6 +352,10 @@ class AskApi {
           ),
         'saved' => AskSaved(json['id'] as String),
         'token' => AskToken(json['text'] as String),
+        'webSources' => AskWebSources(
+            (json['sources'] as List).cast<Map<String, dynamic>>().map(WebSource.fromJson).toList(),
+          ),
+        'webToken' => AskWebToken(json['text'] as String),
         'done' => const AskDone(),
         'error' => AskFailed(json['message'] as String),
         _ => null,

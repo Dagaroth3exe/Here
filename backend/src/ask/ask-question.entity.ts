@@ -41,6 +41,13 @@ export class AskQuestion {
   @Column({ type: 'jsonb', default: () => "'[]'" })
   replies: unknown[];
 
+  /** The "From the web" answer and the sources it cites. */
+  @Column({ name: 'web_answer', type: 'text', default: '' })
+  webAnswer: string;
+
+  @Column({ name: 'web_sources', type: 'jsonb', default: () => "'[]'" })
+  webSources: unknown[];
+
   @Column({ type: 'jsonb', nullable: true })
   places: { places: Place[]; radiusM: number; near: string | null } | null;
 

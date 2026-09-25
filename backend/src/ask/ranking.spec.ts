@@ -1,4 +1,26 @@
-import { cosine, selectTop, voteBoost } from './ranking.js';
+import { chunkText, cosine, selectTop, voteBoost } from './ranking.js';
+
+describe('chunkText', () => {
+  it('keeps chunks near 700 chars and overlaps by a sentence', () => {
+    const sentence = (i: number) => `Sentence number ${i} talks about a cafe in Sector 125 with good coffee.`;
+    const chunks = chunkText(Array.from({ length: 40 }, (_, i) => sentence(i)).join(' '), 50);
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const chunk of chunks) expect(chunk.length).toBeLessThanOrEqual(700 + sentence(0).length);
+    const lastSentenceOfFirst = chunks[0].split(/(?<=\.)\s+/).at(-1)!;
+    expect(chunks[1].startsWith(lastSentenceOfFirst)).toBe(true);
+  });
+
+  it('hard-splits long runs without punctuation (scraped menus)', () => {
+    const chunks = chunkText('Home Menu Deals '.repeat(200), 50);
+    expect(chunks.length).toBeGreaterThan(3);
+    for (const chunk of chunks) expect(chunk.length).toBeLessThanOrEqual(700);
+  });
+
+  it('respects maxChunks and drops tiny fragments', () => {
+    expect(chunkText('word. '.repeat(2000), 3)).toHaveLength(3);
+    expect(chunkText('Too short.', 5)).toEqual([]);
+  });
+});
 
 describe('cosine', () => {
   it('is 1 for the same direction and 0 for orthogonal vectors', () => {

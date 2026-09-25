@@ -112,34 +112,34 @@ class PastQuestionTile extends StatelessWidget {
   }
 }
 
-/// "What people say": the AI summary of forum replies, with each [n] turned
-/// into a tappable badge — or progress/error while there's no text yet.
+/// An AI-written answer card ("What people say", "From the web"), with each
+/// [n] turned into a tappable badge that opens what it cites — or a progress
+/// line / error while there's no text yet.
 class AskSummaryCard extends StatelessWidget {
   const AskSummaryCard({
     super.key,
-    required this.stage,
-    required this.area,
+    required this.title,
+    required this.icon,
+    required this.progress,
     required this.answer,
     required this.error,
-    required this.replies,
-    required this.onOpenReply,
+    required this.citations,
+    required this.onOpenCitation,
   });
 
-  /// Shown as progress until the first words arrive.
-  final AskStage? stage;
-  final String? area;
+  final String title;
+  final IconData icon;
+
+  /// Shown with a spinner until the first words arrive; null when not waiting.
+  final String? progress;
   final String answer;
   final String? error;
-  final List<CommunityReply> replies;
-  final ValueChanged<String> onOpenReply;
+
+  /// What each [n] links to.
+  final Map<int, String> citations;
+  final ValueChanged<String> onOpenCitation;
 
   static final _citation = RegExp(r'\[(\d+(?:\s*,\s*\d+)*)\]');
-
-  String _stageLabel(AskStage stage) => switch (stage) {
-        AskStage.searching => t('Finding people who asked the same thing…'),
-        AskStage.reading => t('Reading their replies…'),
-        AskStage.answering => t('Summarising what they said…'),
-      };
 
   /// Plain text with each "[2]" turned into a small tappable source badge.
   List<InlineSpan> _spans(AppColors colors) {
@@ -150,12 +150,12 @@ class AskSummaryCard extends StatelessWidget {
     for (final match in _citation.allMatches(text)) {
       spans.add(TextSpan(text: text.substring(last, match.start)));
       for (final n in match.group(1)!.split(',').map((s) => int.tryParse(s.trim()))) {
-        final reply = replies.where((r) => r.n == n).firstOrNull;
-        if (reply == null) continue;
+        final url = citations[n];
+        if (url == null) continue;
         spans.add(WidgetSpan(
           alignment: PlaceholderAlignment.middle,
           child: GestureDetector(
-            onTap: () => onOpenReply(reply.url),
+            onTap: () => onOpenCitation(url),
             child: Container(
               margin: const EdgeInsets.symmetric(horizontal: 1.5),
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
@@ -177,12 +177,12 @@ class AskSummaryCard extends StatelessWidget {
     final Widget body;
     if (error != null) {
       body = Text(error!, style: AppText.reputationLine.copyWith(color: colors.error));
-    } else if (stage != null) {
+    } else if (progress != null) {
       body = Row(
         children: [
           SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2, color: colors.green)),
           const SizedBox(width: 12),
-          Expanded(child: Text(_stageLabel(stage!), style: AppText.reputationLine.copyWith(color: colors.ink55))),
+          Expanded(child: Text(progress!, style: AppText.reputationLine.copyWith(color: colors.ink55))),
         ],
       );
     } else {
@@ -203,15 +203,69 @@ class AskSummaryCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.auto_awesome, size: 15, color: colors.greenInk),
+              Icon(icon, size: 15, color: colors.greenInk),
               const SizedBox(width: 6),
-              Text(t('What people say'), style: AppText.statusEyebrow.copyWith(color: colors.greenInk)),
+              Text(title, style: AppText.statusEyebrow.copyWith(color: colors.greenInk)),
             ],
           ),
           const SizedBox(height: 10),
           body,
         ],
       ),
+    );
+  }
+}
+
+/// The pages behind the web answer, numbered to match its [n] badges.
+class WebSourcesSection extends StatelessWidget {
+  const WebSourcesSection({super.key, required this.sources});
+
+  final List<WebSource> sources;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(t('Sources'), style: AppText.sectionHeader.copyWith(color: colors.ink)),
+        const SizedBox(height: 6),
+        for (final source in sources)
+          InkWell(
+            onTap: () => openLink(source.url),
+            borderRadius: BorderRadius.circular(10),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 22,
+                    alignment: Alignment.center,
+                    padding: const EdgeInsets.symmetric(vertical: 1),
+                    decoration: BoxDecoration(color: colors.greenTint, borderRadius: BorderRadius.circular(6)),
+                    child: Text('${source.n}', style: AppText.meta.copyWith(color: colors.greenInk, fontSize: 11)),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          source.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppText.reputationLine.copyWith(color: colors.ink, fontSize: 13.5),
+                        ),
+                        Text(source.site, style: AppText.meta.copyWith(color: colors.ink45)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
