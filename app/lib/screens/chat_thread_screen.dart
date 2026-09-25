@@ -15,11 +15,13 @@ import '../utils/initials.dart';
 
 class _ThreadMessage {
   const _ThreadMessage({
+    required this.id,
     required this.fromId,
     required this.body,
     required this.createdAt,
   });
 
+  final String id;
   final String fromId;
   final String body;
   final DateTime createdAt;
@@ -44,6 +46,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   final _scrollController = ScrollController();
   final List<_ThreadMessage> _messages = [];
   bool _loading = true;
+  bool _sending = false;
   StreamSubscription<ChatMessage>? _chatSub;
 
   @override
@@ -55,16 +58,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           message.fromId == widget.otherUserId ||
           message.targetId == widget.otherUserId;
       if (!isThisThread) return;
-      setState(() {
-        _messages.add(
-          _ThreadMessage(
-            fromId: message.fromId,
-            body: message.body,
-            createdAt: message.createdAt,
-          ),
-        );
-      });
-      _scrollToBottom();
+      _addMessages([_fromLive(message)]);
     });
     _loadHistory();
   }
@@ -78,22 +72,40 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     try {
       final history = await ChatApi.getMessages(token, widget.otherUserId);
       if (!mounted) return;
-      setState(() {
-        _messages.addAll(
-          history.map(
-            (m) => _ThreadMessage(
-              fromId: m.senderId,
-              body: m.body,
-              createdAt: m.createdAt,
-            ),
+      _loading = false;
+      _addMessages(
+        history.map(
+          (m) => _ThreadMessage(
+            id: m.id,
+            fromId: m.senderId,
+            body: m.body,
+            createdAt: m.createdAt,
           ),
-        );
-        _loading = false;
-      });
-      _scrollToBottom();
+        ),
+      );
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  static _ThreadMessage _fromLive(ChatMessage message) => _ThreadMessage(
+        id: message.id,
+        fromId: message.fromId,
+        body: message.body,
+        createdAt: message.createdAt,
+      );
+
+  /// The same message can arrive up to three ways (history, the live socket,
+  /// and the send response) in any order — skip ones already shown and keep
+  /// the thread in time order.
+  void _addMessages(Iterable<_ThreadMessage> incoming) {
+    final known = {for (final m in _messages) m.id};
+    setState(() {
+      _messages
+        ..addAll(incoming.where((m) => known.add(m.id)))
+        ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    });
+    _scrollToBottom();
   }
 
   void _scrollToBottom() {
@@ -107,11 +119,25 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     });
   }
 
-  void _send() {
+  Future<void> _send() async {
     final text = _controller.text.trim();
-    if (text.isEmpty) return;
-    RealtimeService.instance.sendChat(widget.otherUserId, text);
+    final token = AuthSession.accessToken;
+    if (text.isEmpty || token == null || _sending) return;
+    _sending = true;
     _controller.clear();
+    try {
+      final sent = await ChatApi.sendMessage(token, widget.otherUserId, text);
+      if (mounted) _addMessages([_fromLive(sent)]);
+    } catch (_) {
+      if (!mounted) return;
+      // Give the text back rather than losing it.
+      if (_controller.text.isEmpty) _controller.text = text;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(t("Couldn't send your message. Try again."))),
+      );
+    } finally {
+      _sending = false;
+    }
   }
 
   @override
@@ -216,7 +242,7 @@ class _MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.colors;
     final time = DateFormat.Hm(AppLocale.current.value.languageCode)
-        .format(message.createdAt);
+        .format(message.createdAt.toLocal());
 
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,

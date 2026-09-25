@@ -10,6 +10,7 @@ import '../services/auth_session.dart';
 import '../services/avatar_controller.dart';
 import '../services/profile_api.dart';
 import '../services/profile_controller.dart';
+import '../services/location_service.dart';
 import '../services/realtime_service.dart';
 import '../utils/initials.dart';
 import '../widgets/avatar_thumb.dart';
@@ -57,7 +58,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _goReachable() {
     final token = AuthSession.accessToken;
-    if (token != null) RealtimeService.instance.connect(token);
+    if (token == null) return;
+    RealtimeService.instance.connect(token);
+    // Put yourself on everyone else's map — only with a real fix, never the
+    // fallback location.
+    LocationService.resolve().then((_) {
+      final fix = LocationService.cached;
+      if (fix != null && _reachable) RealtimeService.instance.sendLocation(fix.latitude, fix.longitude);
+    });
   }
 
   void _toggle() {
@@ -114,7 +122,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
-            child: MiniMap(reachableInView: 5, locationEnabled: _reachable),
+            child: MiniMap(locationEnabled: _reachable),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(22, 26, 22, 0),

@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'design/colors.dart';
-import 'l10n/strings.dart';
+import 'screens/ask_screen.dart';
 import 'screens/chat_list_screen.dart';
-import 'screens/coming_soon_screen.dart';
 import 'screens/discover_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/chat_notifications.dart';
@@ -23,7 +22,7 @@ class _HereShellState extends State<HereShell> {
   Map<AppTab, Widget> get _screens => {
         AppTab.home: const HomeScreen(),
         AppTab.discover: const DiscoverScreen(),
-        AppTab.askHere: ComingSoonScreen(label: t('Ask HERE')),
+        AppTab.askHere: const AskScreen(),
         AppTab.chats: ChatListScreen(key: _chatListKey),
       };
 

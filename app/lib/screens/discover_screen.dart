@@ -41,7 +41,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   }
 
   List<ReachablePerson> get _others =>
-      _people.where((p) => p.name != AuthSession.name).toList();
+      _people.where((p) => p.id != AuthSession.userId).toList();
 
   void _ping(ReachablePerson person) {
     RealtimeService.instance.sendPing(person.id);

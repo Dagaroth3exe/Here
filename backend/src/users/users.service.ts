@@ -107,7 +107,8 @@ export class UsersService {
   }
 
   createWithPhone(phone: string): Promise<User> {
-    const user = this.usersRepository.create({ phone, displayName: phone });
+    // No displayName: it's shown to other people, and a phone number isn't a name.
+    const user = this.usersRepository.create({ phone });
     return this.usersRepository.save(user);
   }
 

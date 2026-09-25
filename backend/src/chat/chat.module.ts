@@ -4,6 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { UsersModule } from '../users/users.module.js';
+import { ChatEvents } from './chat-events.js';
 import { ChatController } from './chat.controller.js';
 import { ChatService } from './chat.service.js';
 import { Message } from './message.entity.js';
@@ -20,7 +21,7 @@ import { Message } from './message.entity.js';
     }),
   ],
   controllers: [ChatController],
-  providers: [ChatService, JwtAuthGuard],
-  exports: [ChatService],
+  providers: [ChatService, ChatEvents, JwtAuthGuard],
+  exports: [ChatService, ChatEvents],
 })
 export class ChatModule {}

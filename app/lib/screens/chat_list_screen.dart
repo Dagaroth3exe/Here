@@ -190,7 +190,7 @@ class _ConversationRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.colors;
     final time = DateFormat.Hm(AppLocale.current.value.languageCode)
-        .format(conversation.lastAt);
+        .format(conversation.lastAt.toLocal());
 
     return GestureDetector(
       onTap: onTap,

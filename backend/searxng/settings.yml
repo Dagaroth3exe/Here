@@ -1,0 +1,31 @@
+# Self-hosted SearXNG — the web search behind Ask HERE's AI answers.
+# Only overrides are listed; everything else is SearXNG's defaults.
+use_default_settings: true
+
+server:
+  # Overridden by the SEARXNG_SECRET env var (see docker-compose.yml).
+  secret_key: "overridden-by-SEARXNG_SECRET"
+  # Only the HERE backend talks to this instance, never the public internet,
+  # so the bot limiter (which needs its own Valkey setup) stays off.
+  limiter: false
+  image_proxy: false
+
+search:
+  safe_search: 1
+  # The backend reads results as JSON.
+  formats:
+    - html
+    - json
+
+# More general engines than the defaults, so one engine rate-limiting or
+# CAPTCHA-ing this instance (Brave and DuckDuckGo both do under steady use)
+# doesn't leave Ask HERE with no results. Merged by name into the defaults.
+engines:
+  - name: google
+    disabled: false
+  - name: bing
+    disabled: false
+  - name: startpage
+    disabled: false
+  - name: mojeek
+    disabled: false

@@ -7,11 +7,17 @@ import '../widgets/map_canvas.dart';
 const _kMargin = 16.0;
 const _kRadius = 24.0;
 
-class FullMapScreen extends StatelessWidget {
-  const FullMapScreen({super.key, required this.reachableInView, required this.locationEnabled});
+class FullMapScreen extends StatefulWidget {
+  const FullMapScreen({super.key, required this.locationEnabled});
 
-  final int reachableInView;
   final bool locationEnabled;
+
+  @override
+  State<FullMapScreen> createState() => _FullMapScreenState();
+}
+
+class _FullMapScreenState extends State<FullMapScreen> {
+  int _reachableInView = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -31,7 +37,13 @@ class FullMapScreen extends StatelessWidget {
               borderRadius: BorderRadius.circular(_kRadius),
               child: Stack(
                 children: [
-                  Positioned.fill(child: MapCanvas(locationEnabled: locationEnabled)),
+                  Positioned.fill(
+                    child: MapCanvas(
+                      locationEnabled: widget.locationEnabled,
+                      interactive: true,
+                      onReachableInViewChanged: (count) => setState(() => _reachableInView = count),
+                    ),
+                  ),
                   Positioned(
                     left: 14,
                     top: 12,
@@ -54,7 +66,7 @@ class FullMapScreen extends StatelessWidget {
                           ),
                           const SizedBox(width: 7),
                           Text(
-                            t('{count} Reachable in view', {'count': reachableInView}),
+                            t('{count} Reachable in view', {'count': _reachableInView}),
                             style: AppText.chipLabel.copyWith(color: colors.ink70, fontSize: 11.5),
                           ),
                         ],

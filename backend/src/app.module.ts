@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
+import { AskModule } from './ask/ask.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { ChatModule } from './chat/chat.module.js';
 import { RealtimeModule } from './realtime/realtime.module.js';
@@ -26,6 +27,7 @@ import { UsersModule } from './users/users.module.js';
     AuthModule,
     ChatModule,
     RealtimeModule,
+    AskModule,
   ],
   controllers: [AppController],
   providers: [AppService],

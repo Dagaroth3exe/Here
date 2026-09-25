@@ -19,6 +19,19 @@ services:
     volumes:
       - valkey_data:/data
 
+  # Open-source metasearch for Ask HERE's AI answers. It queries external
+  # engines and forums (a deliberate, scoped exception to the open-source
+  # rule); the instance itself is self-hosted.
+  searxng:
+    image: searxng/searxng:latest
+    restart: unless-stopped
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:-change-me-to-a-long-random-string}
+    ports:
+      - '127.0.0.1:8080:8080'
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+
 volumes:
   postgres_data:
   valkey_data:

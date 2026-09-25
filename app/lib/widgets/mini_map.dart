@@ -6,22 +6,23 @@ import '../l10n/strings.dart';
 import '../screens/full_map_screen.dart';
 import 'map_canvas.dart';
 
-class MiniMap extends StatelessWidget {
-  const MiniMap({
-    super.key,
-    required this.reachableInView,
-    required this.locationEnabled,
-  });
+class MiniMap extends StatefulWidget {
+  const MiniMap({super.key, required this.locationEnabled});
 
-  final int reachableInView;
   final bool locationEnabled;
+
+  @override
+  State<MiniMap> createState() => _MiniMapState();
+}
+
+class _MiniMapState extends State<MiniMap> {
+  int _reachableInView = 0;
 
   void _openFullMap(BuildContext context) {
     Navigator.of(context).push(
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) => FullMapScreen(
-          reachableInView: reachableInView,
-          locationEnabled: locationEnabled,
+          locationEnabled: widget.locationEnabled,
         ),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           final curved = CurvedAnimation(
@@ -53,7 +54,12 @@ class MiniMap extends StatelessWidget {
         ),
         child: Stack(
           children: [
-            Positioned.fill(child: MapCanvas(locationEnabled: locationEnabled)),
+            Positioned.fill(
+              child: MapCanvas(
+                locationEnabled: widget.locationEnabled,
+                onReachableInViewChanged: (count) => setState(() => _reachableInView = count),
+              ),
+            ),
             Positioned(
               left: 14,
               bottom: 12,
@@ -72,7 +78,7 @@ class MiniMap extends StatelessWidget {
                     const SizedBox(width: 7),
                     Text(
                       t('{count} Reachable in view', {
-                        'count': reachableInView,
+                        'count': _reachableInView,
                       }),
                       style: AppText.chipLabel.copyWith(
                         color: colors.ink70,

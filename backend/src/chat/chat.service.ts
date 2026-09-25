@@ -1,7 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { publicName } from '../users/public-name.js';
 import { UsersService } from '../users/users.service.js';
+import { ChatEvents, type ChatMessagePayload } from './chat-events.js';
+import { MAX_MESSAGE_LENGTH } from './dto/send-message.dto.js';
 import { Message } from './message.entity.js';
 
 export interface ConversationSummary {
@@ -16,11 +19,38 @@ export class ChatService {
   constructor(
     @InjectRepository(Message) private readonly messages: Repository<Message>,
     private readonly usersService: UsersService,
+    private readonly events: ChatEvents,
   ) {}
 
-  async saveMessage(senderId: string, recipientId: string, body: string): Promise<Message> {
-    const message = this.messages.create({ senderId, recipientId, body });
-    return this.messages.save(message);
+  /**
+   * The one way a message gets sent — over the WebSocket or plain HTTP — so
+   * both paths validate the same way, and both parties get it live via
+   * [ChatEvents] if they're connected (history covers them if not).
+   */
+  async send(senderId: string, targetId: string, rawBody: string): Promise<ChatMessagePayload> {
+    const body = rawBody.trim();
+    if (!body) throw new BadRequestException('Message is empty');
+    if (body.length > MAX_MESSAGE_LENGTH) throw new BadRequestException('Message is too long');
+    if (targetId === senderId) throw new BadRequestException("You can't message yourself");
+
+    const [sender, target] = await Promise.all([
+      this.usersService.findById(senderId),
+      this.usersService.findById(targetId),
+    ]);
+    if (!sender || !target) throw new NotFoundException('User not found');
+
+    const saved = await this.messages.save(this.messages.create({ senderId, recipientId: targetId, body }));
+    const payload: ChatMessagePayload = {
+      id: saved.id,
+      fromId: senderId,
+      fromName: publicName(sender),
+      targetId,
+      targetName: publicName(target),
+      body: saved.body,
+      createdAt: saved.createdAt.toISOString(),
+    };
+    this.events.emit(payload);
+    return payload;
   }
 
   history(userId: string, otherUserId: string): Promise<Message[]> {
@@ -52,7 +82,7 @@ export class ChatService {
       const other = await this.usersService.findById(otherId);
       summaries.push({
         userId: otherId,
-        name: other?.username ?? other?.email ?? 'Someone',
+        name: other ? publicName(other) : 'Someone',
         lastBody: lastMessage.body,
         lastAt: lastMessage.createdAt.toISOString(),
       });
