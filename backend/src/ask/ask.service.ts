@@ -1,9 +1,19 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { AskCommunityService, type PastQuestion } from './ask-community.service.js';
 import { parseThreadUrl, RedditClient, stackExchangeReplies, type Reply, type Thread } from './community.js';
 import { chat, chatStream, embed } from './ollama.js';
 import { cosine, selectTop, voteBoost } from './ranking.js';
-import { areaName, nearbyPlaces, PLACE_KINDS, searchWeb, type Place, type PlaceKind } from './web-sources.js';
+import {
+  areaName,
+  closestPlaces,
+  geocode,
+  PLACE_KINDS,
+  searchWeb,
+  type ClosestPlaces,
+  type Place,
+  type PlaceKind,
+} from './web-sources.js';
 
 export interface NumberedReply extends Reply {
   n: number;
@@ -13,13 +23,17 @@ export interface NumberedReply extends Reply {
 export type AskEvent =
   | { type: 'status'; stage: 'searching' | 'reading' | 'answering' }
   | { type: 'context'; area: string | null }
+  /** Questions already asked on HERE nearby that mean nearly the same — shown first. */
+  | { type: 'similar'; questions: PastQuestion[] }
+  /** This question is now saved to the community under this id. */
+  | { type: 'saved'; id: string }
   | { type: 'replies'; replies: NumberedReply[] }
-  | { type: 'places'; places: Place[] }
+  /** Closest places, all inside radiusM of the person (or of `near`, a place they named). */
+  | { type: 'places'; places: Place[]; radiusM: number; near: string | null }
   | { type: 'token'; text: string }
   | { type: 'done' }
   | { type: 'error'; message: string };
 
-const NEARBY_RADIUS_M = 1500;
 /** Search results looked at per query and forum. */
 const RESULTS_PER_SEARCH = 10;
 /** Threads whose replies are read — the ones most like the person's situation. */
@@ -37,6 +51,8 @@ const FORUMS = ['site:reddit.com', 'site:stackexchange.com'];
 interface Plan {
   queries: string[];
   placeKind: PlaceKind | null;
+  /** A place named in the question ("in Vaishali"), to search around instead of the person. */
+  near: string | null;
 }
 
 /**
@@ -55,7 +71,10 @@ export class AskService {
   private readonly reddit: RedditClient | null;
   private readonly stackExchangeKey?: string;
 
-  constructor(config: ConfigService) {
+  constructor(
+    config: ConfigService,
+    private readonly community: AskCommunityService,
+  ) {
     this.searxngUrl = config.get('SEARXNG_URL') ?? 'http://localhost:8080';
     this.ollamaUrl = config.get('OLLAMA_URL') ?? 'http://localhost:11434';
     this.model = config.get('OLLAMA_MODEL') ?? 'qwen2.5-local';
@@ -74,46 +93,70 @@ export class AskService {
   }
 
   async answer(
+    askerId: string,
     question: string,
     location: { lat: number; lng: number } | null,
     emit: (event: AskEvent) => void,
     signal: AbortSignal,
   ): Promise<void> {
     emit({ type: 'status', stage: 'searching' });
-    const area = location ? await areaName(location.lat, location.lng) : null;
+    const [area, [questionVector]] = await Promise.all([
+      location ? areaName(location.lat, location.lng) : Promise.resolve(null),
+      embed(this.ollamaUrl, this.embedModel, [`search_query: ${question}`], signal),
+    ]);
     emit({ type: 'context', area });
+
+    // Fast (a DB read, no web) — people see earlier HERE answers while the
+    // forum search is still running.
+    const similar = await this.community.similar(questionVector, location).catch((error: Error) => {
+      this.logger.warn(`Similar-question lookup failed: ${error.message}`);
+      return [];
+    });
+    if (similar.length > 0) emit({ type: 'similar', questions: similar });
+
     const plan = await this.plan(question, area, signal);
     this.logger.log(`"${question}" → ${JSON.stringify(plan)}`);
 
-    const [threads, places] = await Promise.all([
-      this.findThreads(plan.queries),
-      plan.placeKind && location
-        ? nearbyPlaces(plan.placeKind, location.lat, location.lng, NEARBY_RADIUS_M).catch((error: Error) => {
-            this.logger.warn(`Overpass failed: ${error.message}`);
-            return [];
-          })
-        : Promise.resolve([]),
-    ]);
+    const [threads, closest] = await Promise.all([this.findThreads(plan.queries), this.closestPlaces(plan, location)]);
     if (signal.aborted) return;
-    if (places.length > 0) emit({ type: 'places', places });
+    if (closest) emit({ type: 'places', ...closest });
 
     emit({ type: 'status', stage: 'reading' });
-    const [questionVector] = await embed(this.ollamaUrl, this.embedModel, [`search_query: ${question}`], signal);
     const similarThreads = await this.mostSimilarThreads(questionVector, threads, signal);
     const replies = await this.bestReplies(questionVector, similarThreads, signal);
     if (signal.aborted) return;
 
+    const save = async (summary: string) => {
+      try {
+        const id = await this.community.save({
+          askerId,
+          question,
+          embedding: questionVector,
+          location,
+          area,
+          summary,
+          replies,
+          places: closest,
+        });
+        emit({ type: 'saved', id });
+      } catch (error) {
+        this.logger.warn(`Couldn't save the question: ${(error as Error).message}`);
+      }
+    };
+
     if (replies.length === 0) {
-      emit({
-        type: 'token',
-        text: "I couldn't find people online who've discussed this yet. Try describing your situation differently, or ask the people around you on HERE.",
-      });
+      const text = closest
+        ? "I couldn't find people online who've discussed this, but here are the closest places."
+        : "I couldn't find people online who've discussed this yet. It's now on HERE, so people around you can answer it.";
+      emit({ type: 'token', text });
+      await save(text);
       emit({ type: 'done' });
       return;
     }
     emit({ type: 'replies', replies });
 
     emit({ type: 'status', stage: 'answering' });
+    let summary = '';
     for await (const text of chatStream(
       this.ollamaUrl,
       this.model,
@@ -123,9 +166,41 @@ export class AskService {
       ],
       { signal },
     )) {
+      summary += text;
       emit({ type: 'token', text });
     }
+    await save(summary);
     emit({ type: 'done' });
+  }
+
+  /**
+   * Closest places of the planned kind — around the place named in the
+   * question if there is one, otherwise around the person.
+   */
+  private async closestPlaces(
+    plan: Plan,
+    location: { lat: number; lng: number } | null,
+  ): Promise<(ClosestPlaces & { near: string | null }) | null> {
+    if (!plan.placeKind) return null;
+    const named = plan.near ? await geocode(plan.near, location) : null;
+    if (plan.near && !named) {
+      // Searching around the person instead would label their own
+      // neighbourhood as the place they asked about.
+      this.logger.warn(`Couldn't locate "${plan.near}", skipping places`);
+      return null;
+    }
+    const center = named ?? location;
+    if (!center) return null;
+    try {
+      const closest = await closestPlaces(plan.placeKind, center.lat, center.lng);
+      this.logger.log(
+        `Places (${plan.placeKind} near ${named?.label ?? 'you'}): ${closest ? `${closest.places.length} within ${closest.radiusM} m` : 'none within 5 km'}`,
+      );
+      return closest && { ...closest, near: named?.label ?? null };
+    } catch (error) {
+      this.logger.warn(`Overpass failed: ${(error as Error).message}`);
+      return null;
+    }
   }
 
   /** Forum threads from site-filtered searches, deduplicated, in rank order. */
@@ -212,7 +287,7 @@ export class AskService {
   }
 
   private async plan(question: string, area: string | null, signal: AbortSignal): Promise<Plan> {
-    const fallback: Plan = { queries: [area ? `${question} ${area}` : question], placeKind: null };
+    const fallback: Plan = { queries: [area ? `${question} ${area}` : question], placeKind: null, near: null };
     try {
       const raw = await chat(
         this.ollamaUrl,
@@ -223,13 +298,14 @@ export class AskService {
         ],
         { format: 'json', temperature: 0, signal },
       );
-      const parsed = JSON.parse(raw) as { queries?: unknown; placeKind?: unknown };
+      const parsed = JSON.parse(raw) as { queries?: unknown; placeKind?: unknown; near?: unknown };
       const queries = Array.isArray(parsed.queries)
         ? parsed.queries.filter((q): q is string => typeof q === 'string' && q.trim().length > 0).slice(0, 2)
         : [];
       const placeKind =
         typeof parsed.placeKind === 'string' && parsed.placeKind in PLACE_KINDS ? (parsed.placeKind as PlaceKind) : null;
-      return { queries: queries.length > 0 ? queries : fallback.queries, placeKind };
+      const near = typeof parsed.near === 'string' && parsed.near.trim() ? parsed.near.trim().slice(0, 80) : null;
+      return { queries: queries.length > 0 ? queries : fallback.queries, placeKind, near };
     } catch (error) {
       if (signal.aborted) throw error;
       this.logger.warn(`Planning failed, searching the raw question: ${(error as Error).message}`);
@@ -242,11 +318,16 @@ function planPrompt(area: string | null): string {
   return `You help find forum threads (Reddit, Stack Exchange) where other people asked about the same situation as this person.
 ${area ? `The person is in ${area}.` : "The person's location is unknown."}
 Reply with JSON only, shaped exactly like:
-{"queries": ["local query", "general query"], "placeKind": null}
+{"queries": ["local query", "general query"], "placeKind": null, "near": null}
+The question may be in Hindi or Hinglish (e.g. "ghar ka samaan" = household goods); write the queries in English.
 - queries: exactly 2 short queries, each phrased the way someone would title a forum post about this situation.
   1. Local: as someone in this city would post it on the city's subreddit, with the city name (e.g. "shifting to noida which area to rent").
   2. General: the same situation with NO place names at all, as anyone anywhere would post it (e.g. "renting a flat without local credit history after moving for work"). Forums like Stack Exchange only match this kind.
-- placeKind: only when the person wants physical places near them, one of: ${Object.keys(PLACE_KINDS).join(', ')}. Otherwise null.`;
+- placeKind: when the person wants to find, buy, eat, or go somewhere physical, the kind of place that fits best. Otherwise null. One of:
+${Object.entries(PLACE_KINDS)
+  .map(([kind, { about }]) => `  ${kind}: ${about}`)
+  .join('\n')}
+- near: if the question names a specific area, locality, or landmark to search around (e.g. "in Vaishali", "near Sector 18 metro"), that place's name exactly as the person wrote it (e.g. "Vaishali"). Don't add a city unless the person did. If they mean around themselves ("near me", "nearby", no place given), null.`;
 }
 
 function summaryPrompt(area: string | null): string {

@@ -86,27 +86,110 @@ export async function areaName(lat: number, lng: number): Promise<string | null>
 }
 
 /**
- * What the planner can ask OpenStreetMap for — each an Overpass tag filter.
- * Kept to a fixed list so model output can't inject into the query.
+ * What the planner can ask OpenStreetMap for. Each kind is a description the
+ * model picks from (it also maps Hindi/Hinglish like "ghar ka samaan") and
+ * the Overpass tag filters behind it — a fixed list, so model output can
+ * never reach the query itself.
  */
 export const PLACE_KINDS = {
-  food: '["amenity"~"^(restaurant|fast_food|food_court)$"]',
-  cafe: '["amenity"="cafe"]',
-  drinks: '["amenity"~"^(bar|pub|biergarten)$"]',
-  medical: '["amenity"~"^(hospital|clinic|doctors|pharmacy)$"]',
-  atm: '["amenity"~"^(atm|bank)$"]',
-  park: '["leisure"~"^(park|garden)$"]',
-  gym: '["leisure"~"^(fitness_centre|sports_centre)$"]',
-  stay: '["tourism"~"^(hotel|guest_house|hostel)$"]',
-  shopping: '["shop"~"^(mall|supermarket|department_store)$"]',
-  transit: '["railway"~"^(station|subway_entrance)$"]',
-} as const;
+  food: { about: 'restaurants, dhabas, fast food', filters: ['["amenity"~"^(restaurant|fast_food|food_court)$"]'] },
+  cafe: { about: 'cafes, coffee, tea', filters: ['["amenity"="cafe"]'] },
+  drinks: { about: 'bars, pubs', filters: ['["amenity"~"^(bar|pub|biergarten)$"]'] },
+  grocery: {
+    about: 'groceries, kirana, supermarket, vegetables',
+    filters: ['["shop"~"^(supermarket|convenience|greengrocer|grocery|general|dairy)$"]'],
+  },
+  household: {
+    about: 'household goods (ghar ka samaan), utensils, kitchenware, hardware, general/department stores',
+    filters: ['["shop"~"^(houseware|hardware|doityourself|variety_store|department_store|general|kitchen|household_linen)$"]'],
+  },
+  electronics: {
+    about: 'electronics, mobile phones, appliances, computers',
+    filters: ['["shop"~"^(electronics|mobile_phone|computer|appliance)$"]'],
+  },
+  clothes: { about: 'clothes, shoes, tailors', filters: ['["shop"~"^(clothes|fashion|shoes|tailor|boutique)$"]'] },
+  furniture: { about: 'furniture', filters: ['["shop"~"^(furniture|bed|interior_decoration)$"]'] },
+  stationery: { about: 'stationery, books, photocopy/print shops', filters: ['["shop"~"^(stationery|books|copyshop)$"]'] },
+  salon: { about: 'salons, barbers, beauty parlours', filters: ['["shop"~"^(hairdresser|beauty)$"]'] },
+  pharmacy: { about: 'pharmacy, chemist, medical store', filters: ['["amenity"="pharmacy"]', '["shop"="chemist"]'] },
+  medical: { about: 'hospitals, clinics, doctors', filters: ['["amenity"~"^(hospital|clinic|doctors)$"]'] },
+  atm: { about: 'ATMs, banks', filters: ['["amenity"~"^(atm|bank)$"]'] },
+  park: { about: 'parks, gardens', filters: ['["leisure"~"^(park|garden)$"]'] },
+  gym: { about: 'gyms, sports centres', filters: ['["leisure"~"^(fitness_centre|sports_centre)$"]'] },
+  stay: { about: 'hotels, guest houses, hostels, PGs', filters: ['["tourism"~"^(hotel|guest_house|hostel)$"]'] },
+  mall: { about: 'malls, shopping centres', filters: ['["shop"="mall"]'] },
+  transit: { about: 'metro and railway stations', filters: ['["railway"~"^(station|subway_entrance)$"]'] },
+} as const satisfies Record<string, { about: string; filters: readonly string[] }>;
 
 export type PlaceKind = keyof typeof PLACE_KINDS;
 
-export async function nearbyPlaces(kind: PlaceKind, lat: number, lng: number, radiusM: number): Promise<Place[]> {
-  const query = `[out:json][timeout:7];nwr${PLACE_KINDS[kind]}["name"](around:${radiusM},${lat},${lng});out center 40;`;
-  const response = await overpass(query);
+/** Readable names for OSM tag values that don't read well as-is. */
+const TYPE_LABELS: Record<string, string> = {
+  doityourself: 'hardware & home store',
+  houseware: 'household goods',
+  variety_store: 'variety store',
+  general: 'general store',
+  convenience: 'convenience store',
+  greengrocer: 'fruits & vegetables',
+  mobile_phone: 'mobile phones',
+  copyshop: 'print & photocopy',
+  hairdresser: 'salon',
+  beauty: 'beauty parlour',
+  fast_food: 'fast food',
+  food_court: 'food court',
+  fitness_centre: 'gym',
+  guest_house: 'guest house',
+  subway_entrance: 'metro entrance',
+  household_linen: 'home linen',
+  interior_decoration: 'home decor',
+};
+
+/** How far out to look, in order — the first ring with enough places wins. */
+export const SEARCH_RINGS_M = [1000, 1500, 2000, 3000, 5000] as const;
+/** A ring is "enough" once it holds this many places. */
+const ENOUGH_PLACES = 3;
+const MAX_PLACES = 10;
+
+export interface ClosestPlaces {
+  /** The ring everything shown falls inside — never a mix of rings. */
+  radiusM: number;
+  places: Place[];
+}
+
+/**
+ * The genuinely closest places: within 1 km if there are enough, otherwise
+ * widening step by step (1.5, 2, 3, 5 km). Only the smallest sufficient ring
+ * is returned, so "nearest" never mixes a 300 m result with a 3 km one.
+ * At most two Overpass queries (2 km, then 5 km if needed); the rings are
+ * cut locally from those.
+ */
+export async function closestPlaces(kind: PlaceKind, lat: number, lng: number): Promise<ClosestPlaces | null> {
+  let found: Place[] = [];
+  for (const queryRadius of [2000, 5000]) {
+    found = await placesWithin(kind, lat, lng, queryRadius);
+    const ring = pickRing(found, queryRadius);
+    if (ring) return ring;
+  }
+  return found.length > 0 ? pickRing(found, 5000, true) : null;
+}
+
+/** The smallest ring (up to maxRadius) holding enough places, or null. */
+export function pickRing(places: Place[], maxRadius: number, acceptFewer = false): ClosestPlaces | null {
+  const sorted = [...places].sort((a, b) => a.distanceM - b.distanceM);
+  for (const radiusM of SEARCH_RINGS_M.filter((r) => r <= maxRadius)) {
+    const inside = sorted.filter((p) => p.distanceM <= radiusM);
+    const last = radiusM === maxRadius;
+    if (inside.length >= ENOUGH_PLACES || (last && acceptFewer && inside.length > 0)) {
+      return { radiusM, places: inside.slice(0, MAX_PLACES) };
+    }
+  }
+  return null;
+}
+
+async function placesWithin(kind: PlaceKind, lat: number, lng: number, radiusM: number): Promise<Place[]> {
+  const around = `(around:${radiusM},${lat},${lng})`;
+  const union = PLACE_KINDS[kind].filters.map((f) => `nwr${f}["name"]${around};`).join('');
+  const response = await overpass(`[out:json][timeout:7];(${union});out center 300;`);
   const data = (await response.json()) as {
     elements: { lat?: number; lon?: number; center?: { lat: number; lon: number }; tags: Record<string, string> }[];
   };
@@ -116,12 +199,46 @@ export async function nearbyPlaces(kind: PlaceKind, lat: number, lng: number, ra
       const pLng = e.lon ?? e.center?.lon;
       if (pLat === undefined || pLng === undefined) return null;
       const t = e.tags;
-      const kindLabel = t.cuisine ? `${t.amenity ?? t.leisure ?? t.shop ?? ''} (${t.cuisine})` : (t.amenity ?? t.leisure ?? t.tourism ?? t.shop ?? t.railway ?? '');
-      return { name: t.name, kind: kindLabel.replace(/_/g, ' '), lat: pLat, lng: pLng, distanceM: Math.round(distanceM(lat, lng, pLat, pLng)) };
+      const tag = t.shop ?? t.amenity ?? t.leisure ?? t.tourism ?? t.railway ?? '';
+      const type = TYPE_LABELS[tag] ?? tag.replace(/_/g, ' ');
+      return {
+        name: t.name,
+        kind: t.cuisine ? `${type} (${t.cuisine.replace(/;/g, ', ')})` : type,
+        lat: pLat,
+        lng: pLng,
+        distanceM: Math.round(distanceM(lat, lng, pLat, pLng)),
+      };
     })
-    .filter((p): p is Place => p !== null)
-    .sort((a, b) => a.distanceM - b.distanceM)
-    .slice(0, 12);
+    .filter((p): p is Place => p !== null);
+}
+
+/**
+ * Coordinates for a place named in the question ("in Vaishali"), preferring
+ * matches within ~50 km of the asker so the right Vaishali wins.
+ */
+export async function geocode(name: string, near: { lat: number; lng: number } | null): Promise<{ lat: number; lng: number; label: string } | null> {
+  const attempt = async (q: string, bounded: boolean) => {
+    const params = new URLSearchParams({ format: 'jsonv2', limit: '1', q, countrycodes: 'in' });
+    if (near && bounded) {
+      params.set('viewbox', `${near.lng - 0.5},${near.lat + 0.5},${near.lng + 0.5},${near.lat - 0.5}`);
+      params.set('bounded', '1');
+    }
+    const response = await fetchWithTimeout(`https://nominatim.openstreetmap.org/search?${params}`, 6_000);
+    const [hit] = (await response.json()) as { lat: string; lon: string; name?: string; display_name: string }[];
+    return hit ? { lat: Number(hit.lat), lng: Number(hit.lon), label: hit.name || hit.display_name.split(',')[0] } : null;
+  };
+  // "Vaishali, Noida" fails when the model guessed the city wrong (it's in
+  // Ghaziabad) — the bare name near the person usually finds the right one.
+  const bare = name.split(',')[0].trim();
+  try {
+    return (
+      (near ? await attempt(name, true) : null) ??
+      (near && bare !== name ? await attempt(bare, true) : null) ??
+      (await attempt(name, false))
+    );
+  } catch {
+    return null;
+  }
 }
 
 /**
