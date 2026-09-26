@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
+
 import '../design/colors.dart';
 import '../l10n/strings.dart';
 import '../services/auth_session.dart';
@@ -18,20 +19,14 @@ const _devStyleUrl = MapLibreStyles.openfreemapLiberty;
 const _defaultZoom = 15.0;
 
 /// `#rrggbb` for MapLibre annotation colors, which take CSS strings.
-String _hex(Color c) =>
-    '#${(c.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
+String _hex(Color c) => '#${(c.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
 
 /// The live map shared by the mini map card and the full-screen map view:
 /// real OpenStreetMap tiles, you, and everyone Reachable who has shared a
 /// location, each drawn at their actual (server-coarsened) position.
 /// Fills whatever box it's given.
 class MapCanvas extends StatefulWidget {
-  const MapCanvas({
-    super.key,
-    required this.locationEnabled,
-    this.interactive = false,
-    this.onReachableInViewChanged,
-  });
+  const MapCanvas({super.key, required this.locationEnabled, this.interactive = false, this.onReachableInViewChanged});
 
   /// Whether this canvas is allowed to actively query the device's location
   /// right now. Tied to the Reachable toggle — turning Reachable off stops
@@ -77,6 +72,7 @@ class _MapCanvasState extends State<MapCanvas> with SingleTickerProviderStateMix
   void didUpdateWidget(covariant MapCanvas oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.locationEnabled && !oldWidget.locationEnabled) _resolveLocation();
+    if (widget.locationEnabled != oldWidget.locationEnabled) _applyMotionPreference();
   }
 
   /// Everyone Reachable with a known position, minus yourself (you get your
@@ -131,13 +127,15 @@ class _MapCanvasState extends State<MapCanvas> with SingleTickerProviderStateMix
     // (so it can pulse); the interactive map needs it pinned to the ground.
     final fix = _fix;
     if (widget.interactive && fix != null) {
-      await controller.addCircle(CircleOptions(
-        geometry: fix,
-        circleRadius: 7,
-        circleColor: _hex(colors.ink),
-        circleStrokeWidth: 3,
-        circleStrokeColor: _hex(colors.paper),
-      ));
+      await controller.addCircle(
+        CircleOptions(
+          geometry: fix,
+          circleRadius: 7,
+          circleColor: _hex(colors.ink),
+          circleStrokeWidth: 3,
+          circleStrokeColor: _hex(colors.paper),
+        ),
+      );
     }
     await _reportInView();
   }
@@ -150,7 +148,9 @@ class _MapCanvasState extends State<MapCanvas> with SingleTickerProviderStateMix
     final sw = bounds.southwest;
     final ne = bounds.northeast;
     final count = _others
-        .where((p) => p.lat! >= sw.latitude && p.lat! <= ne.latitude && p.lng! >= sw.longitude && p.lng! <= ne.longitude)
+        .where(
+          (p) => p.lat! >= sw.latitude && p.lat! <= ne.latitude && p.lng! >= sw.longitude && p.lng! <= ne.longitude,
+        )
         .length;
     if (mounted) callback(count);
   }
@@ -167,9 +167,11 @@ class _MapCanvasState extends State<MapCanvas> with SingleTickerProviderStateMix
       if (fix != null) _fix = fix;
     });
     if (fix == null) {
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
-        content: Text(t("Couldn't find your location. Make sure location is on and HERE is allowed to use it.")),
-      ));
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(
+          content: Text(t("Couldn't find your location. Make sure location is on and HERE is allowed to use it.")),
+        ),
+      );
       return;
     }
     _mapController?.animateCamera(CameraUpdate.newLatLngZoom(fix, _defaultZoom));
@@ -178,9 +180,11 @@ class _MapCanvasState extends State<MapCanvas> with SingleTickerProviderStateMix
     if (realtime.isConnected) realtime.sendLocation(fix.latitude, fix.longitude);
   }
 
+  /// The pulse means "you're broadcasting" — so it's still while you're not
+  /// Reachable, and for anyone who asked the system for less motion.
   void _applyMotionPreference() {
     final reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    if (reduceMotion) {
+    if (reduceMotion || !widget.locationEnabled) {
       _controller.value = 0;
       _controller.stop();
     } else if (!_controller.isAnimating) {
@@ -235,31 +239,32 @@ class _MapCanvasState extends State<MapCanvas> with SingleTickerProviderStateMix
               // and "you" dot can sit at the widget's center. Only shown
               // once there's a real fix — never at the fallback location.
               if (!interactive && _fix != null) ...[
-                Positioned(
-                  left: w / 2 - pulseSize / 2,
-                  top: h / 2 - pulseSize / 2,
-                  width: pulseSize,
-                  height: pulseSize,
-                  child: IgnorePointer(
-                    child: AnimatedBuilder(
-                      animation: _controller,
-                      builder: (context, _) {
-                        final t = Curves.easeOut.transform(_controller.value);
-                        final scale = 0.5 + t * (2.4 - 0.5);
-                        final opacity = 0.55 * (1 - t);
-                        return Opacity(
-                          opacity: opacity.clamp(0.0, 1.0),
-                          child: Transform.scale(
-                            scale: scale,
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(shape: BoxShape.circle, color: colors.green),
+                if (widget.locationEnabled)
+                  Positioned(
+                    left: w / 2 - pulseSize / 2,
+                    top: h / 2 - pulseSize / 2,
+                    width: pulseSize,
+                    height: pulseSize,
+                    child: IgnorePointer(
+                      child: AnimatedBuilder(
+                        animation: _controller,
+                        builder: (context, _) {
+                          final t = Curves.easeOut.transform(_controller.value);
+                          final scale = 0.5 + t * (2.4 - 0.5);
+                          final opacity = 0.55 * (1 - t);
+                          return Opacity(
+                            opacity: opacity.clamp(0.0, 1.0),
+                            child: Transform.scale(
+                              scale: scale,
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(shape: BoxShape.circle, color: colors.green),
+                              ),
                             ),
-                          ),
-                        );
-                      },
+                          );
+                        },
+                      ),
                     ),
                   ),
-                ),
                 Positioned(
                   left: w / 2 - 10,
                   top: h / 2 - 10,

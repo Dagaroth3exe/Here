@@ -106,49 +106,110 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
             child: _StatusCard(reachable: _reachable, onTap: _toggle),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
-            child: Row(
+          // Everything below the status card goes grey and dull while you're
+          // not Reachable, like a dashboard with the power off.
+          _PoweredDown(
+            off: !_reachable,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
-                  child: _StatCard.plain(
-                    value: '64',
-                    caption: t('people nearby'),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _StatCard.plain(
+                          value: '64',
+                          caption: t('people nearby'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _StatCard.reachable(
+                          value: '$_reachableCount',
+                          caption: t('Reachable right now'),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _StatCard.reachable(
-                    value: '$_reachableCount',
-                    caption: t('Reachable right now'),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
+                  child: MiniMap(locationEnabled: _reachable),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(22, 26, 22, 0),
+                  child: ValueListenableBuilder<UserProfile?>(
+                    valueListenable: ProfileController.current,
+                    builder: (context, profile, _) {
+                      return _OpenToSection(
+                        categories: profile?.categories ?? const [],
+                        onEdit: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const EditReachabilityScreen(),
+                          ),
+                        ),
+                      );
+                    },
                   ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(22, 24, 22, 0),
+                  child: _ReputationCard(),
                 ),
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
-            child: MiniMap(locationEnabled: _reachable),
+        ],
+      ),
+    );
+  }
+}
+
+/// Fades [child] to a washed-out grey while [off] — the "power's off" look
+/// for the dashboard when you're not Reachable. It stays usable; it only
+/// looks dormant. The paper-colored scrim on top is what dims the mini map,
+/// since the native map view underneath ignores Flutter's color filters.
+class _PoweredDown extends StatelessWidget {
+  const _PoweredDown({required this.off, required this.child});
+
+  final bool off;
+  final Widget child;
+
+  /// A saturation matrix: 1 keeps full color, 0 is pure greyscale.
+  static List<double> _saturation(double s) {
+    const r = 0.2126, g = 0.7152, b = 0.0722;
+    final i = 1 - s;
+    // dart format off
+    return [
+      r * i + s, g * i,     b * i,     0, 0,
+      r * i,     g * i + s, b * i,     0, 0,
+      r * i,     g * i,     b * i + s, 0, 0,
+      0,         0,         0,         1, 0,
+    ];
+    // dart format on
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final paper = context.colors.paper;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(end: off ? 1 : 0),
+      // Matches the bulb: it dims over ~750 ms, and lights up (flicker, then
+      // swell) over about a second.
+      duration: Duration(milliseconds: off ? 750 : 1000),
+      curve: off ? Curves.easeInCubic : Curves.easeOutCubic,
+      child: child,
+      builder: (context, dim, child) => Stack(
+        children: [
+          ColorFiltered(
+            colorFilter: ColorFilter.matrix(_saturation(1 - 0.9 * dim)),
+            child: child,
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(22, 26, 22, 0),
-            child: ValueListenableBuilder<UserProfile?>(
-              valueListenable: ProfileController.current,
-              builder: (context, profile, _) {
-                return _OpenToSection(
-                  categories: profile?.categories ?? const [],
-                  onEdit: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const EditReachabilityScreen(),
-                    ),
-                  ),
-                );
-              },
+          Positioned.fill(
+            child: IgnorePointer(
+              child: ColoredBox(color: paper.withValues(alpha: 0.45 * dim)),
             ),
-          ),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(22, 24, 22, 0),
-            child: _ReputationCard(),
           ),
         ],
       ),
