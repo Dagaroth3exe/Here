@@ -5,9 +5,8 @@ import 'accent_controller.dart';
 ///
 /// [selected] holds either one of [options] (an `assets/...` path) or an
 /// absolute file path to a photo the user picked from their own library —
-/// see [AvatarThumb] for how each is rendered. In-memory only, same as
-/// [AuthSession] and [ThemeController] — nothing here persists across an
-/// app restart yet.
+/// see [AvatarThumb] for how each is rendered. Saved per account by
+/// [AccountPrefs].
 class AvatarController {
   AvatarController._();
 

@@ -18,6 +18,7 @@ class HereShell extends StatefulWidget {
 
 class _HereShellState extends State<HereShell> {
   AppTab _current = AppTab.home;
+  final Set<AppTab> _visited = {AppTab.home};
   final _chatListKey = GlobalKey<ChatListScreenState>();
 
   Map<AppTab, Widget> get _screens => {
@@ -37,7 +38,10 @@ class _HereShellState extends State<HereShell> {
   }
 
   void _selectTab(AppTab tab) {
-    setState(() => _current = tab);
+    setState(() {
+      _current = tab;
+      _visited.add(tab);
+    });
     if (tab == AppTab.chats) {
       ChatNotifications.instance.refresh();
       _chatListKey.currentState?.refresh();
@@ -52,7 +56,15 @@ class _HereShellState extends State<HereShell> {
         bottom: false,
         child: IndexedStack(
           index: AppTab.values.indexOf(_current),
-          children: [for (final tab in AppTab.values) _screens[tab]!],
+          children: [
+            for (final tab in AppTab.values)
+              // Tabs are built on first visit (Discover carries a second live
+              // map, no need to pay for it until it's opened), and hidden
+              // tabs keep their state but stop animating.
+              _visited.contains(tab)
+                  ? TickerMode(enabled: tab == _current, child: _screens[tab]!)
+                  : const SizedBox.shrink(),
+          ],
         ),
       ),
       bottomNavigationBar: AppTabBar(

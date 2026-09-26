@@ -18,6 +18,14 @@ const _devStyleUrl = MapLibreStyles.openfreemapLiberty;
 
 const _defaultZoom = 15.0;
 
+/// How close the camera gets when flying to a selected person — street level,
+/// which is about as precise as the server's ~110 m coarsening allows.
+const _focusZoom = 16.5;
+
+/// The glyph set the OpenFreeMap styles ship; MapLibre's default font stack
+/// isn't in it, so labels would silently fail to render without this.
+const _labelFont = ['Noto Sans Regular'];
+
 /// `#rrggbb` for MapLibre annotation colors, which take CSS strings.
 String _hex(Color c) => '#${(c.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
 
@@ -26,7 +34,15 @@ String _hex(Color c) => '#${(c.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(
 /// location, each drawn at their actual (server-coarsened) position.
 /// Fills whatever box it's given.
 class MapCanvas extends StatefulWidget {
-  const MapCanvas({super.key, required this.locationEnabled, this.interactive = false, this.onReachableInViewChanged});
+  const MapCanvas({
+    super.key,
+    required this.locationEnabled,
+    this.interactive = false,
+    this.onReachableInViewChanged,
+    this.onPeopleInViewChanged,
+    this.selectedPersonId,
+    this.onPersonSelected,
+  });
 
   /// Whether this canvas is allowed to actively query the device's location
   /// right now. Tied to the Reachable toggle — turning Reachable off stops
@@ -41,6 +57,18 @@ class MapCanvas extends StatefulWidget {
   /// How many other Reachable people are inside the visible region —
   /// re-reported whenever the camera settles or the people list changes.
   final ValueChanged<int>? onReachableInViewChanged;
+
+  /// Ids of the other Reachable people inside the visible region, reported
+  /// alongside [onReachableInViewChanged].
+  final ValueChanged<Set<String>>? onPeopleInViewChanged;
+
+  /// The person to highlight (bigger marker plus a name label). Changing it
+  /// flies the camera to them.
+  final String? selectedPersonId;
+
+  /// Tapping a marker selects that person; tapping empty map clears the
+  /// selection (null). Markers only take taps on an [interactive] map.
+  final ValueChanged<String?>? onPersonSelected;
 
   @override
   State<MapCanvas> createState() => _MapCanvasState();
@@ -73,6 +101,41 @@ class _MapCanvasState extends State<MapCanvas> with SingleTickerProviderStateMix
     super.didUpdateWidget(oldWidget);
     if (widget.locationEnabled && !oldWidget.locationEnabled) _resolveLocation();
     if (widget.locationEnabled != oldWidget.locationEnabled) _applyMotionPreference();
+    if (widget.selectedPersonId != oldWidget.selectedPersonId) {
+      _focusSelected();
+      _drawAnnotations();
+    }
+  }
+
+  ReachablePerson? get _selected {
+    final id = widget.selectedPersonId;
+    if (id == null) return null;
+    for (final p in _others) {
+      if (p.id == id) return p;
+    }
+    return null;
+  }
+
+  void _focusSelected() {
+    final person = _selected;
+    if (person == null) return;
+    _mapController?.animateCamera(CameraUpdate.newLatLngZoom(LatLng(person.lat!, person.lng!), _focusZoom));
+  }
+
+  /// Positions are coarsened server-side, so several people can share one
+  /// exact point and only the top marker catches the tap. Repeated taps on
+  /// that point cycle through everyone standing there.
+  void _onCircleTapped(Circle circle) {
+    final id = circle.data?['id'] as String?;
+    final callback = widget.onPersonSelected;
+    if (id == null || callback == null) return;
+    final tapped = _others.firstWhere(
+      (p) => p.id == id,
+      orElse: () => ReachablePerson(id: id, name: ''),
+    );
+    final stack = _others.where((p) => p.lat == tapped.lat && p.lng == tapped.lng).toList();
+    final current = stack.indexWhere((p) => p.id == widget.selectedPersonId);
+    callback(current == -1 ? id : stack[(current + 1) % stack.length].id);
   }
 
   /// Everyone Reachable with a known position, minus yourself (you get your
@@ -94,6 +157,7 @@ class _MapCanvasState extends State<MapCanvas> with SingleTickerProviderStateMix
 
   void _onMapCreated(MapLibreMapController controller) {
     _mapController = controller;
+    controller.onCircleTapped.add(_onCircleTapped);
   }
 
   void _onStyleLoaded() {
@@ -103,25 +167,73 @@ class _MapCanvasState extends State<MapCanvas> with SingleTickerProviderStateMix
     _drawAnnotations();
   }
 
+  /// What the markers currently on the map were drawn from.
+  String? _drawn;
+
   Future<void> _drawAnnotations() async {
     final controller = _mapController;
     if (!_styleLoaded || controller == null || !mounted) return;
     final colors = context.colors;
 
+    // People broadcasts often repeat what's already drawn; clearing and
+    // re-adding every marker over the platform channel isn't free.
+    final drawn = [
+      widget.selectedPersonId,
+      widget.interactive ? _fix : null,
+      colors.green,
+      for (final p in _others) '${p.id}@${p.lat},${p.lng}:${p.name}',
+    ].join('|');
+    if (drawn == _drawn) return _reportInView();
+    _drawn = drawn;
+
     await controller.clearCircles();
-    final others = _others.toList();
+    await controller.clearSymbols();
+    final selected = _selected;
+    // The selected marker is added last so it draws (and takes taps) on top.
+    final others = _others.where((p) => p.id != selected?.id).toList();
     if (others.isNotEmpty) {
-      await controller.addCircles([
-        for (final p in others)
-          CircleOptions(
-            geometry: LatLng(p.lat!, p.lng!),
-            circleRadius: 6,
-            circleColor: _hex(colors.green),
-            circleStrokeWidth: 3,
-            circleStrokeColor: _hex(colors.mapHalo),
-            circleStrokeOpacity: colors.mapHalo.a,
-          ),
-      ]);
+      await controller.addCircles(
+        [
+          for (final p in others)
+            CircleOptions(
+              geometry: LatLng(p.lat!, p.lng!),
+              circleRadius: 6,
+              circleColor: _hex(colors.green),
+              circleStrokeWidth: 3,
+              circleStrokeColor: _hex(colors.mapHalo),
+              circleStrokeOpacity: colors.mapHalo.a,
+            ),
+        ],
+        [
+          for (final p in others) {'id': p.id},
+        ],
+      );
+    }
+    if (selected != null) {
+      final at = LatLng(selected.lat!, selected.lng!);
+      await controller.addCircle(
+        CircleOptions(
+          geometry: at,
+          circleRadius: 9,
+          circleColor: _hex(colors.green),
+          circleStrokeWidth: 4,
+          circleStrokeColor: _hex(colors.paper),
+        ),
+        {'id': selected.id},
+      );
+      await controller.addSymbol(
+        SymbolOptions(
+          geometry: at,
+          textField: selected.name,
+          fontNames: _labelFont,
+          textSize: 13,
+          textAnchor: 'bottom',
+          textOffset: const Offset(0, -1.1),
+          textColor: _hex(colors.ink),
+          textHaloColor: _hex(colors.paper),
+          textHaloWidth: 2,
+        ),
+      );
     }
     // In the static preview the "you" marker is the centered overlay below
     // (so it can pulse); the interactive map needs it pinned to the ground.
@@ -142,17 +254,19 @@ class _MapCanvasState extends State<MapCanvas> with SingleTickerProviderStateMix
 
   Future<void> _reportInView() async {
     final controller = _mapController;
-    final callback = widget.onReachableInViewChanged;
-    if (controller == null || callback == null) return;
+    final countCallback = widget.onReachableInViewChanged;
+    final peopleCallback = widget.onPeopleInViewChanged;
+    if (controller == null || (countCallback == null && peopleCallback == null)) return;
     final bounds = await controller.getVisibleRegion();
     final sw = bounds.southwest;
     final ne = bounds.northeast;
-    final count = _others
-        .where(
-          (p) => p.lat! >= sw.latitude && p.lat! <= ne.latitude && p.lng! >= sw.longitude && p.lng! <= ne.longitude,
-        )
-        .length;
-    if (mounted) callback(count);
+    final inView = {
+      for (final p in _others)
+        if (p.lat! >= sw.latitude && p.lat! <= ne.latitude && p.lng! >= sw.longitude && p.lng! <= ne.longitude) p.id,
+    };
+    if (!mounted) return;
+    countCallback?.call(inView.length);
+    peopleCallback?.call(inView);
   }
 
   /// The locate button: asks for a fresh fix (not the one cached when the
@@ -201,6 +315,7 @@ class _MapCanvasState extends State<MapCanvas> with SingleTickerProviderStateMix
   @override
   void dispose() {
     _peopleSub?.cancel();
+    _mapController?.onCircleTapped.remove(_onCircleTapped);
     _controller.dispose();
     super.dispose();
   }
@@ -215,6 +330,7 @@ class _MapCanvasState extends State<MapCanvas> with SingleTickerProviderStateMix
       onMapCreated: _onMapCreated,
       onStyleLoadedCallback: _onStyleLoaded,
       onCameraIdle: _reportInView,
+      onMapClick: widget.onPersonSelected == null ? null : (_, _) => widget.onPersonSelected!(null),
       rotateGesturesEnabled: interactive,
       scrollGesturesEnabled: interactive,
       tiltGesturesEnabled: false,
@@ -245,23 +361,28 @@ class _MapCanvasState extends State<MapCanvas> with SingleTickerProviderStateMix
                     top: h / 2 - pulseSize / 2,
                     width: pulseSize,
                     height: pulseSize,
+                    // Its own repaint boundary, and fading via the fill's
+                    // alpha rather than an Opacity layer: the pulse ticks
+                    // every frame, and neither should drag the map with it.
                     child: IgnorePointer(
-                      child: AnimatedBuilder(
-                        animation: _controller,
-                        builder: (context, _) {
-                          final t = Curves.easeOut.transform(_controller.value);
-                          final scale = 0.5 + t * (2.4 - 0.5);
-                          final opacity = 0.55 * (1 - t);
-                          return Opacity(
-                            opacity: opacity.clamp(0.0, 1.0),
-                            child: Transform.scale(
+                      child: RepaintBoundary(
+                        child: AnimatedBuilder(
+                          animation: _controller,
+                          builder: (context, _) {
+                            final t = Curves.easeOut.transform(_controller.value);
+                            final scale = 0.5 + t * (2.4 - 0.5);
+                            final opacity = (0.55 * (1 - t)).clamp(0.0, 1.0);
+                            return Transform.scale(
                               scale: scale,
                               child: DecoratedBox(
-                                decoration: BoxDecoration(shape: BoxShape.circle, color: colors.green),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: colors.green.withValues(alpha: colors.green.a * opacity),
+                                ),
                               ),
-                            ),
-                          );
-                        },
+                            );
+                          },
+                        ),
                       ),
                     ),
                   ),

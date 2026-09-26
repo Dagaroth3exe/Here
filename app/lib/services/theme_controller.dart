@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
 /// App-wide light/dark/system override, settable from the Settings screen.
-/// Defaults to following the system setting, same as before this existed.
+/// Defaults to following the system setting. Saved per account by
+/// [AccountPrefs].
 class ThemeController {
   ThemeController._();
 

@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'account_prefs.dart';
+
 /// Holds the current session, persisted to platform-backed secure storage
 /// (Keychain on iOS, Keystore-backed EncryptedSharedPreferences on Android)
 /// so it survives an app restart.
@@ -34,6 +36,7 @@ class AuthSession {
   static Future<void> restore() async {
     _accessToken = await _storage.read(key: _tokenKey);
     _name = await _storage.read(key: _nameKey);
+    await _loadPrefs();
   }
 
   static Future<void> set(String name, String accessToken) async {
@@ -41,9 +44,17 @@ class AuthSession {
     _accessToken = accessToken;
     await _storage.write(key: _tokenKey, value: accessToken);
     await _storage.write(key: _nameKey, value: name);
+    await _loadPrefs();
+  }
+
+  /// Brings back the signed-in account's own theme and avatar.
+  static Future<void> _loadPrefs() async {
+    final id = userId;
+    if (id != null) await AccountPrefs.load(id);
   }
 
   static Future<void> clear() async {
+    AccountPrefs.reset();
     _name = null;
     _accessToken = null;
     await _storage.delete(key: _tokenKey);

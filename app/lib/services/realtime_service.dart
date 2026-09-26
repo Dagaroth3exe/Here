@@ -2,7 +2,32 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+
+import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+
+import 'location_service.dart';
+
+/// Pads the live people list with a few made-up neighbours so Discover and
+/// the maps have something to show on an empty dev server. Debug builds only
+/// — flip to false to see just the real presence list.
+const _showDemoPeople = kDebugMode;
+
+/// Offsets (in degrees) from your position: a few around you, two sharing a
+/// point (as the server's ~110 m rounding often causes), one a couple of km
+/// off so it starts outside the map view, and one with no location at all.
+const _demoPeople = [
+  (id: 'demo-aarav', name: 'Aarav Sharma', dLat: 0.0016, dLng: -0.0021),
+  (id: 'demo-priya', name: 'Priya Verma', dLat: -0.0012, dLng: 0.0018),
+  (id: 'demo-kabir', name: 'Kabir Mehta', dLat: 0.0009, dLng: 0.0027),
+  (id: 'demo-ananya', name: 'Ananya Iyer', dLat: 0.0009, dLng: 0.0027),
+  (id: 'demo-rohan', name: 'Rohan Das', dLat: -0.0150, dLng: 0.0120),
+  (id: 'demo-meera', name: 'Meera Nair', dLat: null, dLng: null),
+];
+
+/// One of the made-up debug neighbours — not a real account, so there's
+/// nobody on the server to message.
+bool isDemoPerson(String id) => _showDemoPeople && id.startsWith('demo-');
 
 class ReachablePerson {
   const ReachablePerson({required this.id, required this.name, this.lat, this.lng});
@@ -18,11 +43,11 @@ class ReachablePerson {
   bool get hasLocation => lat != null && lng != null;
 
   factory ReachablePerson.fromJson(Map<String, dynamic> json) => ReachablePerson(
-        id: json['id'] as String,
-        name: json['name'] as String,
-        lat: (json['lat'] as num?)?.toDouble(),
-        lng: (json['lng'] as num?)?.toDouble(),
-      );
+    id: json['id'] as String,
+    name: json['name'] as String,
+    lat: (json['lat'] as num?)?.toDouble(),
+    lng: (json['lng'] as num?)?.toDouble(),
+  );
 }
 
 /// The other person read the conversation up to [at] — shows "Seen".
@@ -75,16 +100,16 @@ class ChatMessage {
   final String requesterId;
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
-        id: json['id'] as String,
-        fromId: json['fromId'] as String,
-        fromName: json['fromName'] as String,
-        targetId: json['targetId'] as String,
-        targetName: json['targetName'] as String,
-        body: json['body'] as String,
-        createdAt: DateTime.parse(json['createdAt'] as String),
-        pending: json['status'] == 'pending',
-        requesterId: json['requesterId'] as String? ?? json['fromId'] as String,
-      );
+    id: json['id'] as String,
+    fromId: json['fromId'] as String,
+    fromName: json['fromName'] as String,
+    targetId: json['targetId'] as String,
+    targetName: json['targetName'] as String,
+    body: json['body'] as String,
+    createdAt: DateTime.parse(json['createdAt'] as String),
+    pending: json['status'] == 'pending',
+    requesterId: json['requesterId'] as String? ?? json['fromId'] as String,
+  );
 }
 
 /// Connects to the backend's realtime gateway over a plain WebSocket. Being
@@ -188,25 +213,53 @@ class RealtimeService {
   void sendLocation(double lat, double lng) {
     _location = (lat: lat, lng: lng);
     _sendLocation(lat, lng);
+    // The demo people are placed around you, so follow your new position.
+    if (_showDemoPeople && isConnected) _emitPeople(_serverPeople);
+  }
+
+  /// The presence list exactly as the server last sent it.
+  List<ReachablePerson> _serverPeople = const [];
+
+  void _emitPeople(List<ReachablePerson> fromServer) {
+    _serverPeople = fromServer;
+    final people = _showDemoPeople ? [...fromServer, ..._demoAround()] : fromServer;
+    _people = people;
+    _peopleController.add(people);
+  }
+
+  List<ReachablePerson> _demoAround() {
+    final cached = LocationService.cached;
+    final anchor =
+        _location ??
+        (cached != null
+            ? (lat: cached.latitude, lng: cached.longitude)
+            : (lat: LocationService.fallback.latitude, lng: LocationService.fallback.longitude));
+    return [
+      for (final d in _demoPeople)
+        ReachablePerson(
+          id: d.id,
+          name: d.name,
+          lat: d.dLat == null ? null : anchor.lat + d.dLat!,
+          lng: d.dLng == null ? null : anchor.lng + d.dLng!,
+        ),
+    ];
   }
 
   void _sendLocation(double lat, double lng) {
-    _channel?.sink.add(jsonEncode({
-      'event': 'location',
-      'data': {'lat': lat, 'lng': lng},
-    }));
+    _channel?.sink.add(
+      jsonEncode({
+        'event': 'location',
+        'data': {'lat': lat, 'lng': lng},
+      }),
+    );
   }
 
   void _handleMessage(dynamic raw) {
     final message = jsonDecode(raw as String) as Map<String, dynamic>;
     switch (message['event']) {
       case 'people':
-        final people = (message['data'] as List)
-            .cast<Map<String, dynamic>>()
-            .map(ReachablePerson.fromJson)
-            .toList();
-        _people = people;
-        _peopleController.add(people);
+        final people = (message['data'] as List).cast<Map<String, dynamic>>().map(ReachablePerson.fromJson).toList();
+        _emitPeople(people);
       case 'chat:message':
         _chatController.add(ChatMessage.fromJson(message['data'] as Map<String, dynamic>));
       case 'chat:read':
@@ -226,6 +279,7 @@ class RealtimeService {
   void _reset() {
     _channel = null;
     _subscription = null;
+    _serverPeople = const [];
     _people = const [];
     _peopleController.add(const []);
   }

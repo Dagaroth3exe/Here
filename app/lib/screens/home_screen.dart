@@ -107,58 +107,59 @@ class _HomeScreenState extends State<HomeScreen> {
             child: _StatusCard(reachable: _reachable, onTap: _toggle),
           ),
           // Everything below the status card goes grey and dull while you're
-          // not Reachable, like a dashboard with the power off.
-          _PoweredDown(
-            off: !_reachable,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+          // not Reachable, like a dashboard with the power off. Switching
+          // back on lights the cards up one at a time, top to bottom.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
+            child: Row(
               children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _StatCard.plain(
-                          value: '64',
-                          caption: t('people nearby'),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _StatCard.reachable(
-                          value: '$_reachableCount',
-                          caption: t('Reachable right now'),
-                        ),
-                      ),
-                    ],
+                Expanded(
+                  child: _PoweredDown(
+                    off: !_reachable,
+                    order: 0,
+                    child: _StatCard.plain(value: '64', caption: t('people nearby')),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
-                  child: MiniMap(locationEnabled: _reachable),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(22, 26, 22, 0),
-                  child: ValueListenableBuilder<UserProfile?>(
-                    valueListenable: ProfileController.current,
-                    builder: (context, profile, _) {
-                      return _OpenToSection(
-                        categories: profile?.categories ?? const [],
-                        onEdit: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const EditReachabilityScreen(),
-                          ),
-                        ),
-                      );
-                    },
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _PoweredDown(
+                    off: !_reachable,
+                    order: 1,
+                    child: _StatCard.reachable(value: '$_reachableCount', caption: t('Reachable right now')),
                   ),
-                ),
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(22, 24, 22, 0),
-                  child: _ReputationCard(),
                 ),
               ],
             ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
+            child: _PoweredDown(
+              off: !_reachable,
+              order: 2,
+              child: MiniMap(locationEnabled: _reachable),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(22, 26, 22, 0),
+            child: _PoweredDown(
+              off: !_reachable,
+              order: 3,
+              child: ValueListenableBuilder<UserProfile?>(
+                valueListenable: ProfileController.current,
+                builder: (context, profile, _) {
+                  return _OpenToSection(
+                    categories: profile?.categories ?? const [],
+                    onEdit: () => Navigator.of(
+                      context,
+                    ).push(MaterialPageRoute(builder: (_) => const EditReachabilityScreen())),
+                  );
+                },
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(22, 24, 22, 0),
+            child: _PoweredDown(off: !_reachable, order: 4, child: const _ReputationCard()),
           ),
         ],
       ),
@@ -170,11 +171,90 @@ class _HomeScreenState extends State<HomeScreen> {
 /// for the dashboard when you're not Reachable. It stays usable; it only
 /// looks dormant. The paper-colored scrim on top is what dims the mini map,
 /// since the native map view underneath ignores Flutter's color filters.
-class _PoweredDown extends StatelessWidget {
-  const _PoweredDown({required this.off, required this.child});
+///
+/// Powering down happens all at once. Powering up is staggered by [order]:
+/// each card waits its turn, then flickers on like the bulb does.
+class _PoweredDown extends StatefulWidget {
+  const _PoweredDown({required this.off, required this.order, required this.child});
 
   final bool off;
+
+  /// Position in the light-up sequence — 0 lights first.
+  final int order;
   final Widget child;
+
+  @override
+  State<_PoweredDown> createState() => _PoweredDownState();
+}
+
+class _PoweredDownState extends State<_PoweredDown> with TickerProviderStateMixin {
+  static const _stagger = Duration(milliseconds: 260);
+  static const _lightUp = Duration(milliseconds: 650);
+  static const _powerDown = Duration(milliseconds: 750);
+
+  /// Lighting up, as a multiple of the dim level it started from: a quick
+  /// catch, a stutter back down, then a steady swell to full brightness.
+  static final _flicker = TweenSequence<double>([
+    TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.35), weight: 12),
+    TweenSequenceItem(tween: Tween(begin: 0.35, end: 0.8), weight: 10),
+    TweenSequenceItem(tween: Tween(begin: 0.8, end: 0.0).chain(CurveTween(curve: Curves.easeOutCubic)), weight: 78),
+  ]);
+
+  /// Drives powering down; its value is the dim level directly.
+  late final AnimationController _dim = AnimationController(vsync: this, value: widget.off ? 1 : 0);
+
+  /// Drives lighting up, 0 → 1 through [_flicker].
+  late final AnimationController _light = AnimationController(vsync: this, duration: _lightUp);
+
+  /// Dim level when the current light-up began (it can interrupt a fade).
+  double _lightFrom = 1;
+  bool _lighting = false;
+  Timer? _wait;
+
+  /// Keeps [widget.child]'s state (the mini map's native view included)
+  /// when it moves in and out of the filter below, instead of rebuilding it.
+  final _childKey = GlobalKey();
+
+  double get _level => _lighting ? _lightFrom * _flicker.transform(_light.value) : _dim.value;
+
+  @override
+  void didUpdateWidget(covariant _PoweredDown oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.off == oldWidget.off) return;
+    final reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final from = _level;
+    _wait?.cancel();
+    _light.stop();
+    setState(() => _lighting = false);
+    _dim.value = from;
+
+    if (widget.off) {
+      _dim.animateTo(1, duration: reduceMotion ? Duration.zero : _powerDown, curve: Curves.easeInCubic);
+    } else if (reduceMotion) {
+      _dim.value = 0;
+    } else {
+      _wait = Timer(_stagger * widget.order, () {
+        if (!mounted) return;
+        setState(() {
+          _lighting = true;
+          _lightFrom = from;
+        });
+        _light.forward(from: 0).whenComplete(() {
+          if (!mounted || !_lighting || _light.value < 1) return;
+          _dim.value = 0;
+          setState(() => _lighting = false);
+        });
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _wait?.cancel();
+    _dim.dispose();
+    _light.dispose();
+    super.dispose();
+  }
 
   /// A saturation matrix: 1 keeps full color, 0 is pure greyscale.
   static List<double> _saturation(double s) {
@@ -193,26 +273,27 @@ class _PoweredDown extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final paper = context.colors.paper;
-    return TweenAnimationBuilder<double>(
-      tween: Tween(end: off ? 1 : 0),
-      // Matches the bulb: it dims over ~750 ms, and lights up (flicker, then
-      // swell) over about a second.
-      duration: Duration(milliseconds: off ? 750 : 1000),
-      curve: off ? Curves.easeInCubic : Curves.easeOutCubic,
-      child: child,
-      builder: (context, dim, child) => Stack(
-        children: [
-          ColorFiltered(
-            colorFilter: ColorFilter.matrix(_saturation(1 - 0.9 * dim)),
-            child: child,
-          ),
-          Positioned.fill(
-            child: IgnorePointer(
-              child: ColoredBox(color: paper.withValues(alpha: 0.45 * dim)),
+    return AnimatedBuilder(
+      animation: Listenable.merge([_dim, _light]),
+      child: KeyedSubtree(key: _childKey, child: widget.child),
+      builder: (context, child) {
+        final dim = _level.clamp(0.0, 1.0);
+        // Fully lit (the usual state): no filter or scrim at all. Even an
+        // identity ColorFiltered costs an offscreen layer every frame, and
+        // over the mini map it'd re-composite the native view each tick.
+        if (dim == 0) return child!;
+        return Stack(
+          // Pass the parent's constraints straight through, so a card in an
+          // Expanded still fills its slot instead of shrinking to content.
+          fit: StackFit.passthrough,
+          children: [
+            ColorFiltered(colorFilter: ColorFilter.matrix(_saturation(1 - 0.9 * dim)), child: child),
+            Positioned.fill(
+              child: IgnorePointer(child: ColoredBox(color: paper.withValues(alpha: 0.45 * dim))),
             ),
-          ),
-        ],
-      ),
+          ],
+        );
+      },
     );
   }
 }
