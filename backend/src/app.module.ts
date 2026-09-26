@@ -6,8 +6,11 @@ import { AppService } from './app.service.js';
 import { AskModule } from './ask/ask.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { ChatModule } from './chat/chat.module.js';
+import { EventsModule } from './events/events.module.js';
 import { RealtimeModule } from './realtime/realtime.module.js';
+import { PushModule } from './push/push.module.js';
 import { RedisModule } from './redis/redis.module.js';
+import { SafetyModule } from './safety/safety.module.js';
 import { UsersModule } from './users/users.module.js';
 
 @Module({
@@ -22,12 +25,15 @@ import { UsersModule } from './users/users.module.js';
         synchronize: config.get('NODE_ENV') !== 'production',
       }),
     }),
+    EventsModule,
     RedisModule,
     UsersModule,
+    SafetyModule,
     AuthModule,
     ChatModule,
     RealtimeModule,
     AskModule,
+    PushModule,
   ],
   controllers: [AppController],
   providers: [AppService],

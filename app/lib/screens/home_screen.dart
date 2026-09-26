@@ -37,7 +37,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _reachable = true;
   int _reachableCount = 0;
   StreamSubscription<List<ReachablePerson>>? _peopleSub;
-  StreamSubscription<IncomingPing>? _pingSub;
+  StreamSubscription<ChatMessage>? _requestSub;
+  StreamSubscription<AskAnswerNotice>? _answerSub;
 
   @override
   void initState() {
@@ -45,15 +46,19 @@ class _HomeScreenState extends State<HomeScreen> {
     _peopleSub = RealtimeService.instance.peopleStream.listen((people) {
       setState(() => _reachableCount = people.length);
     });
-    _pingSub = RealtimeService.instance.pingStream.listen((ping) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(t('{name} pinged you!', {'name': ping.fromName})),
-        ),
-      );
-    });
+    // A new chat request (someone's first message) or an answer to your
+    // Ask HERE question — worth interrupting for while the app is open.
+    _requestSub = RealtimeService.instance.chatStream
+        .where((m) => m.pending && m.fromId != AuthSession.userId)
+        .listen((request) => _notify(t('{name} sent you a chat request', {'name': request.fromName})));
+    _answerSub = RealtimeService.instance.askAnswerStream
+        .listen((_) => _notify(t('Someone answered your question on Ask HERE')));
     if (_reachable) _goReachable();
+  }
+
+  void _notify(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
   void _goReachable() {
@@ -80,7 +85,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _peopleSub?.cancel();
-    _pingSub?.cancel();
+    _requestSub?.cancel();
+    _answerSub?.cancel();
     RealtimeService.instance.disconnect();
     super.dispose();
   }

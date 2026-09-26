@@ -43,9 +43,13 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   List<ReachablePerson> get _others =>
       _people.where((p) => p.id != AuthSession.userId).toList();
 
-  void _ping(ReachablePerson person) {
-    RealtimeService.instance.sendPing(person.id);
-    setState(() => _pingedIds.add(person.id));
+  /// Opens the conversation, where the first message becomes a chat request
+  /// ("say what you need") that they accept or decline.
+  Future<void> _ping(ReachablePerson person) async {
+    final sent = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => ChatThreadScreen(otherUserId: person.id, otherName: person.name)),
+    );
+    if (sent == true && mounted) setState(() => _pingedIds.add(person.id));
   }
 
   @override

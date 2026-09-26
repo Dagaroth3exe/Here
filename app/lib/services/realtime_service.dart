@@ -25,11 +25,28 @@ class ReachablePerson {
       );
 }
 
-class IncomingPing {
-  const IncomingPing({required this.fromId, required this.fromName});
+/// The other person read the conversation up to [at] — shows "Seen".
+class ReadReceipt {
+  const ReadReceipt({required this.byId, required this.at});
 
-  final String fromId;
-  final String fromName;
+  final String byId;
+  final DateTime at;
+}
+
+/// Someone answered a chat request you sent.
+class RequestUpdate {
+  const RequestUpdate({required this.userId, required this.accepted});
+
+  final String userId;
+  final bool accepted;
+}
+
+/// Someone answered a question you asked on Ask HERE.
+class AskAnswerNotice {
+  const AskAnswerNotice({required this.questionId, required this.question});
+
+  final String questionId;
+  final String question;
 }
 
 class ChatMessage {
@@ -41,6 +58,8 @@ class ChatMessage {
     required this.targetName,
     required this.body,
     required this.createdAt,
+    required this.pending,
+    required this.requesterId,
   });
 
   final String id;
@@ -51,6 +70,10 @@ class ChatMessage {
   final String body;
   final DateTime createdAt;
 
+  /// True while it's a chat request the recipient hasn't accepted yet.
+  final bool pending;
+  final String requesterId;
+
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
         id: json['id'] as String,
         fromId: json['fromId'] as String,
@@ -59,6 +82,8 @@ class ChatMessage {
         targetName: json['targetName'] as String,
         body: json['body'] as String,
         createdAt: DateTime.parse(json['createdAt'] as String),
+        pending: json['status'] == 'pending',
+        requesterId: json['requesterId'] as String? ?? json['fromId'] as String,
       );
 }
 
@@ -91,7 +116,9 @@ class RealtimeService {
   static const _authFailedCloseCode = 4001;
 
   final _peopleController = StreamController<List<ReachablePerson>>.broadcast();
-  final _pingController = StreamController<IncomingPing>.broadcast();
+  final _readController = StreamController<ReadReceipt>.broadcast();
+  final _requestController = StreamController<RequestUpdate>.broadcast();
+  final _askAnswerController = StreamController<AskAnswerNotice>.broadcast();
   final _chatController = StreamController<ChatMessage>.broadcast();
 
   List<ReachablePerson> _people = const [];
@@ -102,7 +129,9 @@ class RealtimeService {
   /// The latest people list, for widgets that mount after it was broadcast
   /// (the stream itself doesn't replay).
   List<ReachablePerson> get people => _people;
-  Stream<IncomingPing> get pingStream => _pingController.stream;
+  Stream<ReadReceipt> get readStream => _readController.stream;
+  Stream<RequestUpdate> get requestStream => _requestController.stream;
+  Stream<AskAnswerNotice> get askAnswerStream => _askAnswerController.stream;
   Stream<ChatMessage> get chatStream => _chatController.stream;
 
   bool get isConnected => _channel != null;
@@ -154,13 +183,6 @@ class RealtimeService {
     });
   }
 
-  void sendPing(String targetId) {
-    _channel?.sink.add(jsonEncode({
-      'event': 'ping',
-      'data': {'targetId': targetId},
-    }));
-  }
-
   /// Shares this device's position with everyone Reachable. Remembered so a
   /// reconnect re-sends it without the caller having to.
   void sendLocation(double lat, double lng) {
@@ -185,11 +207,19 @@ class RealtimeService {
             .toList();
         _people = people;
         _peopleController.add(people);
-      case 'ping':
-        final data = message['data'] as Map<String, dynamic>;
-        _pingController.add(IncomingPing(fromId: data['fromId'] as String, fromName: data['fromName'] as String));
       case 'chat:message':
         _chatController.add(ChatMessage.fromJson(message['data'] as Map<String, dynamic>));
+      case 'chat:read':
+        final data = message['data'] as Map<String, dynamic>;
+        _readController.add(ReadReceipt(byId: data['byId'] as String, at: DateTime.parse(data['at'] as String)));
+      case 'chat:request_update':
+        final data = message['data'] as Map<String, dynamic>;
+        _requestController.add(RequestUpdate(userId: data['userId'] as String, accepted: data['status'] == 'accepted'));
+      case 'ask:answer':
+        final data = message['data'] as Map<String, dynamic>;
+        _askAnswerController.add(
+          AskAnswerNotice(questionId: data['questionId'] as String, question: data['question'] as String),
+        );
     }
   }
 
@@ -203,7 +233,9 @@ class RealtimeService {
   void dispose() {
     disconnect();
     _peopleController.close();
-    _pingController.close();
+    _readController.close();
+    _requestController.close();
+    _askAnswerController.close();
     _chatController.close();
   }
 }

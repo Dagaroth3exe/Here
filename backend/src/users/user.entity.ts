@@ -52,6 +52,6 @@ export class User {
   @OneToOne(() => TotpCredential, (totp) => totp.user)
   totpCredential: Relation<TotpCredential> | null;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 }

@@ -5,7 +5,9 @@ import '../design/typography.dart';
 import '../l10n/strings.dart';
 import '../services/ask_api.dart';
 import '../services/auth_session.dart';
+import '../services/safety_api.dart';
 import '../widgets/ask_widgets.dart';
+import '../widgets/report_sheet.dart';
 
 /// A question saved on HERE: the question (anonymous, area only), what HERE
 /// members answered, a box to add your own answer, and what Ask HERE found
@@ -116,7 +118,13 @@ class _AskQuestionScreenState extends State<AskQuestionScreen> {
         title: Text(t('Asked on HERE'), style: AppText.personName.copyWith(color: colors.ink)),
         actions: [
           if (detail?.mine ?? false)
-            IconButton(tooltip: t('Delete'), icon: const Icon(Icons.delete_outline), onPressed: _delete),
+            IconButton(tooltip: t('Delete'), icon: const Icon(Icons.delete_outline), onPressed: _delete)
+          else if (detail != null)
+            IconButton(
+              tooltip: t('Report'),
+              icon: const Icon(Icons.flag_outlined),
+              onPressed: () => showReportSheet(context, target: ReportTarget.askQuestion, targetId: detail.id),
+            ),
         ],
       ),
       body: SafeArea(
@@ -167,7 +175,13 @@ class _AskQuestionScreenState extends State<AskQuestionScreen> {
             style: AppText.reputationLine.copyWith(color: colors.ink50),
           )
         else
-          for (final answer in _answers) _HereAnswerCard(answer: answer),
+          for (final answer in _answers)
+            _HereAnswerCard(
+              answer: answer,
+              onReport: answer.mine
+                  ? null
+                  : () => showReportSheet(context, target: ReportTarget.askAnswer, targetId: answer.id),
+            ),
         if (detail.replies.isNotEmpty || detail.summary.isNotEmpty || detail.webAnswer.isNotEmpty) ...[
           const SizedBox(height: 26),
           Text(t('Found when it was asked'), style: AppText.sectionHeader.copyWith(color: colors.ink)),
@@ -210,9 +224,12 @@ class _AskQuestionScreenState extends State<AskQuestionScreen> {
 }
 
 class _HereAnswerCard extends StatelessWidget {
-  const _HereAnswerCard({required this.answer});
+  const _HereAnswerCard({required this.answer, this.onReport});
 
   final HereAnswer answer;
+
+  /// Set for other people's answers.
+  final VoidCallback? onReport;
 
   @override
   Widget build(BuildContext context) {
@@ -228,14 +245,32 @@ class _HereAnswerCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text.rich(
-            TextSpan(children: [
-              TextSpan(
-                text: answer.mine ? t('You') : answer.author,
-                style: AppText.chipLabel.copyWith(color: colors.ink),
+          Row(
+            children: [
+              Expanded(
+                child: Text.rich(
+                  TextSpan(children: [
+                    TextSpan(
+                      text: answer.mine ? t('You') : answer.author,
+                      style: AppText.chipLabel.copyWith(color: colors.ink),
+                    ),
+                    TextSpan(text: ' · ${monthYear(answer.createdAt)}', style: AppText.meta.copyWith(color: colors.ink50)),
+                  ]),
+                ),
               ),
-              TextSpan(text: ' · ${monthYear(answer.createdAt)}', style: AppText.meta.copyWith(color: colors.ink50)),
-            ]),
+              if (onReport != null)
+                SizedBox(
+                  height: 24,
+                  width: 24,
+                  child: PopupMenuButton<String>(
+                    padding: EdgeInsets.zero,
+                    iconSize: 18,
+                    icon: Icon(Icons.more_horiz, color: colors.ink45),
+                    onSelected: (_) => onReport!(),
+                    itemBuilder: (_) => [PopupMenuItem(value: 'report', child: Text(t('Report')))],
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 6),
           Text(answer.body, style: AppText.reputationLine.copyWith(color: colors.ink, height: 1.45)),

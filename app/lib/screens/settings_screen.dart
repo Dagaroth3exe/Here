@@ -4,6 +4,7 @@ import '../design/typography.dart';
 import '../l10n/app_locale.dart';
 import '../l10n/strings.dart';
 import '../services/theme_controller.dart';
+import 'blocked_people_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -32,6 +33,16 @@ class SettingsScreen extends StatelessWidget {
             Text(t('Language'), style: AppText.sectionHeader.copyWith(color: colors.ink)),
             const SizedBox(height: 11),
             const _LanguagePicker(),
+            const SizedBox(height: 28),
+            Text(t('Safety'), style: AppText.sectionHeader.copyWith(color: colors.ink)),
+            const SizedBox(height: 6),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.block, color: colors.ink70),
+              title: Text(t('Blocked people'), style: AppText.reputationLine.copyWith(color: colors.ink)),
+              trailing: Icon(Icons.chevron_right, color: colors.ink38),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const BlockedPeopleScreen())),
+            ),
           ],
         ),
       ),

@@ -6,10 +6,16 @@ import 'l10n/app_locale.dart';
 import 'screens/splash_screen.dart';
 import 'services/accent_controller.dart';
 import 'services/auth_session.dart';
+import 'services/push_notifications.dart';
 import 'services/theme_controller.dart';
 
-void main() async {
+Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Android starts the app with this flag just to deliver a push while HERE
+  // is closed — show the notification, but don't build the UI.
+  final background = args.contains('--unifiedpush-bg');
+  await PushNotifications.init(background: background);
+  if (background) return;
   await AuthSession.restore();
   runApp(const HereApp());
 }
@@ -33,8 +39,32 @@ class _AppScrollBehavior extends MaterialScrollBehavior {
   }
 }
 
-class HereApp extends StatelessWidget {
+class HereApp extends StatefulWidget {
   const HereApp({super.key});
+
+  @override
+  State<HereApp> createState() => _HereAppState();
+}
+
+class _HereAppState extends State<HereApp> {
+  /// Tracks whether HERE is on screen, so pushes only become system
+  /// notifications while it isn't.
+  late final AppLifecycleListener _lifecycle = AppLifecycleListener(
+    onStateChange: (state) => PushNotifications.foreground = state == AppLifecycleState.resumed,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    PushNotifications.foreground = true;
+    _lifecycle;
+  }
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -50,6 +80,7 @@ class HereApp extends StatelessWidget {
                 final lightColors = AppColors.light.resolveAccent(dark: false);
                 final darkColors = AppColors.dark.resolveAccent(dark: true);
                 return MaterialApp(
+                  navigatorKey: PushNotifications.navigatorKey,
                   debugShowCheckedModeBanner: false,
                   title: 'HERE',
                   locale: locale,

@@ -11,8 +11,9 @@ import {
 import type { IncomingMessage } from 'node:http';
 import type { Subscription } from 'rxjs';
 import type { WebSocket } from 'ws';
-import { ChatEvents } from '../chat/chat-events.js';
 import { ChatService } from '../chat/chat.service.js';
+import { UserEvents } from '../events/user-events.js';
+import { SAFETY_CHANGED, SafetyService } from '../safety/safety.service.js';
 import { publicName } from '../users/public-name.js';
 
 interface JwtPayload {
@@ -23,7 +24,8 @@ interface JwtPayload {
 }
 
 interface ConnectedUser {
-  socket: WebSocket;
+  /** Every open connection for this account (phone, tablet, a reconnect racing the old socket). */
+  sockets: Set<WebSocket>;
   id: string;
   name: string;
   /** Last reported position, already coarsened — see [coarsen]. */
@@ -55,19 +57,26 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   constructor(
     private readonly jwtService: JwtService,
     private readonly chatService: ChatService,
-    private readonly chatEvents: ChatEvents,
+    private readonly userEvents: UserEvents,
+    private readonly safety: SafetyService,
   ) {}
 
   /**
-   * Every saved message — sent over this socket or via `POST /chat/messages`
-   * — goes live to both parties if connected. The sender gets it too, so their
-   * own thread and Chats list update the same way a second device would.
+   * Everything addressed to specific users — new messages (to both parties,
+   * so the sender's own thread updates like a second device would), chat
+   * request updates, read receipts, Ask HERE answers — goes live to whoever
+   * of them is connected. Push-only deliveries have no socket event.
    */
   onModuleInit() {
-    this.chatSubscription = this.chatEvents.messages$.subscribe((message) => {
-      for (const id of new Set([message.fromId, message.targetId])) {
+    this.chatSubscription = this.userEvents.deliveries$.subscribe((delivery) => {
+      if (delivery.event === SAFETY_CHANGED) {
+        this.broadcastPeople();
+        return;
+      }
+      if (delivery.data === null) return;
+      for (const id of new Set(delivery.to)) {
         const user = this.users.get(id);
-        if (user) this.send(user.socket, 'chat:message', message);
+        if (user) this.sendAll(user, delivery.event, delivery.data);
       }
     });
   }
@@ -96,29 +105,24 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     // it, so this goes through the same filter as everything else.
     const name = publicName(payload);
     socket.hereUserId = id;
-    this.users.set(id, { socket, id, name });
+    const existing = this.users.get(id);
+    if (existing) {
+      existing.sockets.add(socket);
+    } else {
+      this.users.set(id, { sockets: new Set([socket]), id, name });
+    }
     this.logger.log(`${name} connected (${this.users.size} reachable)`);
     this.broadcastPeople();
   }
 
   handleDisconnect(socket: TrackedSocket) {
     const id = socket.hereUserId;
-    if (id && this.users.get(id)?.socket === socket) {
-      this.users.delete(id);
+    const user = id ? this.users.get(id) : undefined;
+    // Only when the account's last connection closes do they stop being Reachable.
+    if (user && user.sockets.delete(socket) && user.sockets.size === 0) {
+      this.users.delete(id!);
       this.broadcastPeople();
     }
-  }
-
-  @SubscribeMessage('ping')
-  handlePing(@ConnectedSocket() socket: TrackedSocket, @MessageBody() data: { targetId?: string }) {
-    const fromId = socket.hereUserId;
-    if (!fromId || !data?.targetId) return;
-
-    const from = this.users.get(fromId);
-    const target = this.users.get(data.targetId);
-    if (!from || !target) return;
-
-    this.send(target.socket, 'ping', { fromId: from.id, fromName: from.name });
   }
 
   @SubscribeMessage('location')
@@ -149,16 +153,28 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     }
   }
 
+  /** Everyone gets the Reachable list minus people they've blocked or who blocked them. */
   private broadcastPeople() {
-    const people = [...this.users.values()].map((u) => ({
+    const everyone = [...this.users.values()];
+    const people = everyone.map((u) => ({
       id: u.id,
       name: u.name,
       lat: u.lat ?? null,
       lng: u.lng ?? null,
     }));
-    for (const u of this.users.values()) {
-      this.send(u.socket, 'people', people);
-    }
+    this.safety
+      .hiddenFromMany(everyone.map((u) => u.id))
+      .then((hidden) => {
+        for (const u of everyone) {
+          const blocked = hidden.get(u.id);
+          this.sendAll(u, 'people', blocked?.size ? people.filter((p) => !blocked.has(p.id)) : people);
+        }
+      })
+      .catch((error: Error) => this.logger.warn(`Couldn't broadcast people: ${error.message}`));
+  }
+
+  private sendAll(user: ConnectedUser, event: string, data: unknown) {
+    for (const socket of user.sockets) this.send(socket, event, data);
   }
 
   private send(socket: WebSocket, event: string, data: unknown) {

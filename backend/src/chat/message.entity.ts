@@ -16,6 +16,6 @@ export class Message {
   @Column({ type: 'text' })
   body: string;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 }

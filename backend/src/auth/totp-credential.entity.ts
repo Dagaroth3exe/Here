@@ -35,6 +35,6 @@ export class TotpCredential {
   @Column({ name: 'last_used_step', type: 'bigint', nullable: true })
   lastUsedStep: number | null;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 }

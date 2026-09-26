@@ -3,6 +3,7 @@ import '../design/colors.dart';
 import '../design/typography.dart';
 import '../l10n/strings.dart';
 import '../services/auth_session.dart';
+import '../services/push_notifications.dart';
 import '../services/avatar_controller.dart';
 import '../services/profile_api.dart';
 import '../services/profile_controller.dart';
@@ -16,6 +17,7 @@ class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
   Future<void> _signOut(BuildContext context) async {
+    await PushNotifications.disable();
     await AuthSession.clear();
     if (!context.mounted) return;
     Navigator.of(context).pushAndRemoveUntil(

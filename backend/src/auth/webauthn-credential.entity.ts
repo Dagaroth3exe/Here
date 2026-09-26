@@ -39,6 +39,6 @@ export class WebauthnCredential {
   @Column({ name: 'backed_up' })
   backedUp: boolean;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 }

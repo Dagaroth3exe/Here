@@ -6,6 +6,7 @@ import 'screens/discover_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/chat_notifications.dart';
 import 'services/profile_controller.dart';
+import 'services/push_notifications.dart';
 import 'widgets/app_tab_bar.dart';
 
 class HereShell extends StatefulWidget {
@@ -30,13 +31,15 @@ class _HereShellState extends State<HereShell> {
   void initState() {
     super.initState();
     ChatNotifications.instance.start();
+    // Signed in by now (at start-up or right after login/signup).
+    PushNotifications.enable().then((_) => PushNotifications.openLaunchNotification());
     ProfileController.load();
   }
 
   void _selectTab(AppTab tab) {
     setState(() => _current = tab);
     if (tab == AppTab.chats) {
-      ChatNotifications.instance.markAllRead();
+      ChatNotifications.instance.refresh();
       _chatListKey.currentState?.refresh();
     }
   }

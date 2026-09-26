@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { ILike, Repository } from 'typeorm';
+import { ILike, In, Repository } from 'typeorm';
 import type { UpdateProfileDto } from './dto/update-profile.dto.js';
 import { User } from './user.entity.js';
 
@@ -17,6 +17,14 @@ export class UsersService {
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
   ) {}
+
+  /** Several users in one query, keyed by id (missing ids are simply absent). */
+  async findByIds(ids: string[]): Promise<Map<string, User>> {
+    const unique = [...new Set(ids)];
+    if (unique.length === 0) return new Map();
+    const users = await this.usersRepository.find({ where: { id: In(unique) } });
+    return new Map(users.map((u) => [u.id, u]));
+  }
 
   findByEmail(email: string): Promise<User | null> {
     return this.usersRepository.findOne({

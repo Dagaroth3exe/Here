@@ -1,6 +1,8 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, In, IsNull, Repository, type FindOptionsWhere } from 'typeorm';
+import { UserEvents } from '../events/user-events.js';
+import { SafetyService } from '../safety/safety.service.js';
 import { publicName } from '../users/public-name.js';
 import { UsersService } from '../users/users.service.js';
 import { AskAnswer } from './ask-answer.entity.js';
@@ -44,6 +46,8 @@ export class AskCommunityService {
     @InjectRepository(AskQuestion) private readonly questions: Repository<AskQuestion>,
     @InjectRepository(AskAnswer) private readonly answers: Repository<AskAnswer>,
     private readonly usersService: UsersService,
+    private readonly safety: SafetyService,
+    private readonly events: UserEvents,
   ) {}
 
   async save(input: {
@@ -108,9 +112,14 @@ export class AskCommunityService {
   async detail(id: string, viewerId: string) {
     const question = await this.questions.findOne({ where: { id } });
     if (!question) throw new NotFoundException('Question not found');
-    const answers = await this.answers.find({ where: { questionId: id }, order: { createdAt: 'ASC' } });
-    const authors = await Promise.all([...new Set(answers.map((a) => a.authorId))].map((a) => this.usersService.findById(a)));
-    const names = new Map(authors.filter((u) => u !== null).map((u) => [u.id, publicName(u)]));
+    const [allAnswers, hidden] = await Promise.all([
+      this.answers.find({ where: { questionId: id }, order: { createdAt: 'ASC' } }),
+      this.safety.hiddenFrom(viewerId),
+    ]);
+    // Answers from people the viewer blocked (or who blocked them) aren't shown.
+    const answers = allAnswers.filter((a) => !hidden.has(a.authorId));
+    const authors = await this.usersService.findByIds(answers.map((a) => a.authorId));
+    const names = new Map([...authors].map(([userId, user]) => [userId, publicName(user)]));
     return {
       id: question.id,
       question: question.question,
@@ -138,12 +147,28 @@ export class AskCommunityService {
     const body = rawBody.trim();
     if (!body) throw new BadRequestException('Answer is empty');
     if (body.length > MAX_ANSWER_LENGTH) throw new BadRequestException('Answer is too long');
-    if (!(await this.questions.exists({ where: { id: questionId } }))) throw new NotFoundException('Question not found');
+    const question = await this.questions.findOne({
+      where: { id: questionId },
+      select: { id: true, askerId: true, question: true },
+    });
+    if (!question) throw new NotFoundException('Question not found');
 
     const [saved, author] = await Promise.all([
       this.answers.save(this.answers.create({ questionId, authorId, body })),
       this.usersService.findById(authorId),
     ]);
+    if (question.askerId !== authorId && !(await this.safety.isBlockedEitherWay(question.askerId, authorId))) {
+      this.events.deliver({
+        to: [question.askerId],
+        event: 'ask:answer',
+        data: { questionId, question: question.question },
+        push: {
+          title: 'New answer to your question',
+          body: question.question.length > 100 ? `${question.question.slice(0, 97)}…` : question.question,
+          data: { kind: 'answer', questionId },
+        },
+      });
+    }
     return {
       id: saved.id,
       author: author ? publicName(author) : 'Someone',

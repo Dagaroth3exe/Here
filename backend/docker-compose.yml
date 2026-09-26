@@ -32,6 +32,23 @@ services:
     volumes:
       - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
 
+  # Self-hosted push (UnifiedPush) for chat and Ask HERE notifications —
+  # open source, so no Google/Firebase dependency. Phones need a
+  # UnifiedPush distributor app (e.g. ntfy) pointed at this server.
+  ntfy:
+    image: binwiederhier/ntfy:latest
+    command: serve
+    restart: unless-stopped
+    environment:
+      NTFY_BASE_URL: ${NTFY_PUBLIC_URL:-http://10.0.2.2:8090}
+      NTFY_BEHIND_PROXY: 'false'
+      NTFY_CACHE_FILE: /var/cache/ntfy/cache.db
+    ports:
+      - '8090:80'
+    volumes:
+      - ntfy_cache:/var/cache/ntfy
+
 volumes:
+  ntfy_cache:
   postgres_data:
   valkey_data:
