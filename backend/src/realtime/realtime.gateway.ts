@@ -11,6 +11,7 @@ import {
 import type { IncomingMessage } from 'node:http';
 import type { Subscription } from 'rxjs';
 import type { WebSocket } from 'ws';
+import { AreaService } from '../area/area.service.js';
 import { ChatService } from '../chat/chat.service.js';
 import { UserEvents } from '../events/user-events.js';
 import { SAFETY_CHANGED, SafetyService } from '../safety/safety.service.js';
@@ -68,6 +69,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     private readonly chatService: ChatService,
     private readonly userEvents: UserEvents,
     private readonly safety: SafetyService,
+    private readonly area: AreaService,
   ) {}
 
   /**
@@ -145,6 +147,8 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     user.lat = coarsen(lat);
     user.lng = coarsen(lng);
     this.broadcastPeople();
+    // Recent alerts around here? (At most one notice per area per day.)
+    void this.area.onLocation(user.id, user.lat, user.lng);
   }
 
   @SubscribeMessage('chat:send')

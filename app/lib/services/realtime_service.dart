@@ -6,6 +6,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import 'area_api.dart';
 import 'emergency_api.dart';
 import 'location_service.dart';
 
@@ -157,6 +158,7 @@ class RealtimeService {
   final _askAnswerController = StreamController<AskAnswerNotice>.broadcast();
   final _emergencyController = StreamController<EmergencyEvent>.broadcast();
   final _sosStrikeController = StreamController<SosStanding>.broadcast();
+  final _areaNoticeController = StreamController<AreaSummary>.broadcast();
   final _chatController = StreamController<ChatMessage>.broadcast();
 
   List<ReachablePerson> _people = const [];
@@ -174,6 +176,9 @@ class RealtimeService {
 
   /// Your alarm was flagged as false by people nearby — your new standing.
   Stream<SosStanding> get sosStrikeStream => _sosStrikeController.stream;
+
+  /// You're in an area with recent alerts (sent at most once per area a day).
+  Stream<AreaSummary> get areaNoticeStream => _areaNoticeController.stream;
   Stream<ChatMessage> get chatStream => _chatController.stream;
 
   bool get isConnected => _channel != null;
@@ -296,6 +301,8 @@ class RealtimeService {
         );
       case 'emergency:strike':
         _sosStrikeController.add(SosStanding.fromJson(message['data'] as Map<String, dynamic>));
+      case 'area:notice':
+        _areaNoticeController.add(AreaSummary.fromJson(message['data'] as Map<String, dynamic>));
       case 'ask:answer':
         final data = message['data'] as Map<String, dynamic>;
         _askAnswerController.add(
@@ -320,6 +327,7 @@ class RealtimeService {
     _askAnswerController.close();
     _emergencyController.close();
     _sosStrikeController.close();
+    _areaNoticeController.close();
     _chatController.close();
   }
 }

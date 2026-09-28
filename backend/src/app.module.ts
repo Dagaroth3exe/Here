@@ -6,6 +6,7 @@ import { AppService } from './app.service.js';
 import { AskModule } from './ask/ask.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { ChatModule } from './chat/chat.module.js';
+import { CrimeModule } from './crime/crime.module.js';
 import { EmergencyModule } from './emergency/emergency.module.js';
 import { EventsModule } from './events/events.module.js';
 import { RealtimeModule } from './realtime/realtime.module.js';
@@ -36,6 +37,7 @@ import { UsersModule } from './users/users.module.js';
     AskModule,
     PushModule,
     EmergencyModule,
+    CrimeModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,11 +1,16 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:intl/intl.dart';
 
 import '../data/reachability_categories.dart';
 import '../design/colors.dart';
 import '../design/typography.dart';
+import '../l10n/app_locale.dart';
 import '../l10n/strings.dart';
+import '../services/area_api.dart';
+import '../services/area_safety.dart';
 import '../services/auth_session.dart';
 import '../services/avatar_controller.dart';
 import '../services/profile_api.dart';
@@ -309,6 +314,227 @@ class _PoweredDownState extends State<_PoweredDown> with TickerProviderStateMixi
   }
 }
 
+/// Recent alerts around you, in one line; tap for what it means.
+/// The district's official figure, in one quiet line under the alerts line.
+class _DistrictLine extends StatelessWidget {
+  const _DistrictLine();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return ValueListenableBuilder<DistrictCrime?>(
+      valueListenable: AreaSafety.instance.district,
+      builder: (context, crime, _) {
+        if (crime == null) return const SizedBox.shrink();
+        final count = NumberFormat.decimalPattern(AppLocale.current.value.languageCode).format(crime.total);
+        return InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => showAreaSheet(context),
+          child: Padding(
+            padding: const EdgeInsets.only(top: 2, bottom: 2),
+            child: Row(
+              children: [
+                Icon(Icons.account_balance_outlined, size: 14, color: colors.ink45),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    t('{district}: {count} reported crimes (NCRB {year})', {
+                      'district': crime.district,
+                      'count': count,
+                      'year': crime.year,
+                    }),
+                    maxLines: 2,
+                    style: AppText.meta.copyWith(color: colors.ink50),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Official district figures in the explainer sheet: the number, the trend
+/// once there are two years, what's most reported, and exactly where it's from.
+class _OfficialFigures extends StatelessWidget {
+  const _OfficialFigures({required this.crime});
+
+  final DistrictCrime crime;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final numbers = NumberFormat.decimalPattern(AppLocale.current.value.languageCode);
+    final change = crime.changePercent;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 18),
+        Text(t('Official figures'), style: AppText.sectionHeader.copyWith(color: colors.ink, fontSize: 16)),
+        const SizedBox(height: 8),
+        Text(
+          t('{district}, {state}: {count} reported crimes in {year}', {
+            'district': crime.district,
+            'state': crime.state,
+            'count': numbers.format(crime.total),
+            'year': crime.year,
+          }),
+          style: AppText.reputationLine.copyWith(color: colors.ink, fontWeight: FontWeight.w600),
+        ),
+        if (change != null && crime.previousYear != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            change >= 0
+                ? t('Up {percent}% from {year}', {
+                    'percent': change.abs().toStringAsFixed(1),
+                    'year': crime.previousYear,
+                  })
+                : t('Down {percent}% from {year}', {
+                    'percent': change.abs().toStringAsFixed(1),
+                    'year': crime.previousYear,
+                  }),
+            style: AppText.meta.copyWith(color: colors.ink70),
+          ),
+        ],
+        if (crime.top.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            t('Most reported: {list}', {
+              'list': crime.top.map((h) => '${crimeHeadLabel(h.$1)} (${numbers.format(h.$2)})').join(', '),
+            }),
+            style: AppText.meta.copyWith(color: colors.ink70, height: 1.4),
+          ),
+        ],
+        const SizedBox(height: 8),
+        Text(
+          t(
+            'These are crimes reported to police across the whole district for a year — not a measure of any one street, and they rise and fall with how often people report. Updated when NCRB publishes new district figures.',
+          ),
+          style: AppText.meta.copyWith(color: colors.ink50, height: 1.45),
+        ),
+        const SizedBox(height: 8),
+        InkWell(
+          onTap: () => launchUrl(Uri.parse(crime.sourceUrl), mode: LaunchMode.externalApplication),
+          child: Text(
+            t('Source: NCRB, Crime in India — {title} (data.gov.in). Boundaries: {boundaries}.', {
+              'title': crime.sourceTitle,
+              'boundaries': crime.boundaries,
+            }),
+            style: AppText.meta.copyWith(color: colors.greenInk, fontSize: 11.5, height: 1.4),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AreaLine extends StatelessWidget {
+  const _AreaLine();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return ValueListenableBuilder<AreaSummary?>(
+      valueListenable: AreaSafety.instance.current,
+      builder: (context, summary, _) {
+        if (summary == null) return const SizedBox.shrink();
+        final flagged = summary.people != null;
+        final color = flagged ? colors.trust : colors.ink50;
+        return Semantics(
+          button: true,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => showAreaSheet(context),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                children: [
+                  Icon(flagged ? Icons.shield_outlined : Icons.verified_user_outlined, size: 14, color: color),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      areaSummaryText(summary),
+                      maxLines: 2,
+                      style: AppText.meta.copyWith(
+                        color: flagged ? colors.ink70 : colors.ink50,
+                        fontWeight: summary.level == AreaLevel.several ? FontWeight.w600 : null,
+                      ),
+                    ),
+                  ),
+                  Icon(Icons.info_outline, size: 13, color: colors.ink38),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// What the area line means — its source, and what it isn't.
+void showAreaSheet(BuildContext context) {
+  final colors = context.colors;
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: colors.paper,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+    builder: (context) => SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(22, 20, 22, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(t('Alerts near you'), style: AppText.sectionHeader.copyWith(color: colors.ink)),
+            const SizedBox(height: 10),
+            ValueListenableBuilder<AreaSummary?>(
+              valueListenable: AreaSafety.instance.current,
+              builder: (context, summary, _) => Text(
+                summary == null ? '' : areaSummaryText(summary),
+                style: AppText.reputationLine.copyWith(color: colors.ink, fontWeight: FontWeight.w600),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              t(
+                'This counts emergency alerts raised on HERE by different people within about 1 km over the last 30 days. False alarms and alerts from the last hour are left out, and nothing is shown for fewer than 2 people, so no single alert can be identified.',
+              ),
+              style: AppText.meta.copyWith(color: colors.ink70, height: 1.45),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              t('That count is a heads-up, not a safety rating.'),
+              style: AppText.meta.copyWith(color: colors.ink70, height: 1.45),
+            ),
+            ValueListenableBuilder<DistrictCrime?>(
+              valueListenable: AreaSafety.instance.district,
+              builder: (context, crime, _) => crime == null ? const SizedBox.shrink() : _OfficialFigures(crime: crime),
+            ),
+            const SizedBox(height: 6),
+            ValueListenableBuilder<bool?>(
+              valueListenable: AreaSafety.instance.notices,
+              builder: (context, on, _) => SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: on ?? true,
+                onChanged: on == null ? null : (value) => AreaSafety.instance.setNotices(value).ignore(),
+                activeThumbColor: colors.green,
+                title: Text(
+                  t('Notify me in areas with recent alerts'),
+                  style: AppText.reputationLine.copyWith(color: colors.ink),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
 /// Always-red emergency button — kept out of the Reachable greying (a fixed
 /// color, not a theme one), since it must be findable in the worst moment.
 /// Pulses while your own alert is running.
@@ -398,6 +624,9 @@ class _Header extends StatelessWidget {
                     ),
                   ],
                 ),
+                const SizedBox(height: 6),
+                const _AreaLine(),
+                const _DistrictLine(),
               ],
             ),
           ),

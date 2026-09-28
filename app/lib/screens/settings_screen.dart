@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+
 import '../design/colors.dart';
 import '../design/typography.dart';
 import '../l10n/app_locale.dart';
 import '../l10n/strings.dart';
+import '../services/area_safety.dart';
 import '../services/theme_controller.dart';
 import 'blocked_people_screen.dart';
 
@@ -43,6 +45,31 @@ class SettingsScreen extends StatelessWidget {
               trailing: Icon(Icons.chevron_right, color: colors.ink38),
               onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const BlockedPeopleScreen())),
             ),
+            ValueListenableBuilder<bool?>(
+              valueListenable: AreaSafety.instance.notices,
+              builder: (context, on, _) => SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                secondary: Icon(Icons.shield_outlined, color: colors.ink70),
+                value: on ?? true,
+                onChanged: on == null
+                    ? null
+                    : (value) => AreaSafety.instance.setNotices(value).catchError((_) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(t("Couldn't reach the server. Check your connection and try again.")),
+                            ),
+                          );
+                        }
+                      }),
+                activeThumbColor: colors.green,
+                title: Text(t('Area alerts'), style: AppText.reputationLine.copyWith(color: colors.ink)),
+                subtitle: Text(
+                  t('A heads-up when you’re somewhere people recently raised emergency alerts'),
+                  style: AppText.meta.copyWith(color: colors.ink50),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -53,11 +80,7 @@ class SettingsScreen extends StatelessWidget {
 class _AppearancePicker extends StatelessWidget {
   const _AppearancePicker();
 
-  static const _options = [
-    (ThemeMode.light, 'Light'),
-    (ThemeMode.dark, 'Dark'),
-    (ThemeMode.system, 'System'),
-  ];
+  static const _options = [(ThemeMode.light, 'Light'), (ThemeMode.dark, 'Dark'), (ThemeMode.system, 'System')];
 
   @override
   Widget build(BuildContext context) {
@@ -118,8 +141,7 @@ class _LanguagePicker extends StatelessWidget {
           child: Column(
             children: [
               for (final locale in AppLocale.supported) ...[
-                if (locale != AppLocale.supported.first)
-                  Divider(height: 1, color: colors.hairline),
+                if (locale != AppLocale.supported.first) Divider(height: 1, color: colors.hairline),
                 GestureDetector(
                   onTap: () => AppLocale.current.value = locale,
                   child: Container(

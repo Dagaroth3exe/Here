@@ -3,6 +3,7 @@ import '../design/colors.dart';
 import '../design/typography.dart';
 import '../l10n/strings.dart';
 import '../services/auth_session.dart';
+import '../services/area_safety.dart';
 import '../services/emergency_center.dart';
 import '../services/push_notifications.dart';
 import '../services/avatar_controller.dart';
@@ -19,6 +20,7 @@ class ProfileScreen extends StatelessWidget {
 
   Future<void> _signOut(BuildContext context) async {
     EmergencyCenter.instance.reset();
+    AreaSafety.instance.reset();
     await PushNotifications.disable();
     await AuthSession.clear();
     if (!context.mounted) return;
