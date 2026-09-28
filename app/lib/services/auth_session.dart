@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'account_prefs.dart';
+import 'reachability_controller.dart';
 
 /// Holds the current session, persisted to platform-backed secure storage
 /// (Keychain on iOS, Keystore-backed EncryptedSharedPreferences on Android)
@@ -55,6 +56,7 @@ class AuthSession {
 
   static Future<void> clear() async {
     AccountPrefs.reset();
+    ReachabilityController.on.value = true;
     _name = null;
     _accessToken = null;
     await _storage.delete(key: _tokenKey);

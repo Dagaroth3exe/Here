@@ -5,6 +5,7 @@ import 'screens/chat_list_screen.dart';
 import 'screens/discover_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/chat_notifications.dart';
+import 'services/emergency_center.dart';
 import 'services/profile_controller.dart';
 import 'services/push_notifications.dart';
 import 'widgets/app_tab_bar.dart';
@@ -32,6 +33,7 @@ class _HereShellState extends State<HereShell> {
   void initState() {
     super.initState();
     ChatNotifications.instance.start();
+    EmergencyCenter.instance.start();
     // Signed in by now (at start-up or right after login/signup).
     PushNotifications.enable().then((_) => PushNotifications.openLaunchNotification());
     ProfileController.load();

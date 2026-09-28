@@ -6,6 +6,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import 'emergency_api.dart';
 import 'location_service.dart';
 
 /// Pads the live people list with a few made-up neighbours so Discover and
@@ -48,6 +49,16 @@ class ReachablePerson {
     lat: (json['lat'] as num?)?.toDouble(),
     lng: (json['lng'] as num?)?.toDouble(),
   );
+}
+
+enum EmergencyEventType { alert, update, resolved }
+
+/// An emergency nearby: raised, moved, or over.
+class EmergencyEvent {
+  const EmergencyEvent(this.type, this.alert);
+
+  final EmergencyEventType type;
+  final EmergencyAlert alert;
 }
 
 /// The other person read the conversation up to [at] — shows "Seen".
@@ -144,6 +155,8 @@ class RealtimeService {
   final _readController = StreamController<ReadReceipt>.broadcast();
   final _requestController = StreamController<RequestUpdate>.broadcast();
   final _askAnswerController = StreamController<AskAnswerNotice>.broadcast();
+  final _emergencyController = StreamController<EmergencyEvent>.broadcast();
+  final _sosStrikeController = StreamController<SosStanding>.broadcast();
   final _chatController = StreamController<ChatMessage>.broadcast();
 
   List<ReachablePerson> _people = const [];
@@ -157,6 +170,10 @@ class RealtimeService {
   Stream<ReadReceipt> get readStream => _readController.stream;
   Stream<RequestUpdate> get requestStream => _requestController.stream;
   Stream<AskAnswerNotice> get askAnswerStream => _askAnswerController.stream;
+  Stream<EmergencyEvent> get emergencyStream => _emergencyController.stream;
+
+  /// Your alarm was flagged as false by people nearby — your new standing.
+  Stream<SosStanding> get sosStrikeStream => _sosStrikeController.stream;
   Stream<ChatMessage> get chatStream => _chatController.stream;
 
   bool get isConnected => _channel != null;
@@ -268,6 +285,17 @@ class RealtimeService {
       case 'chat:request_update':
         final data = message['data'] as Map<String, dynamic>;
         _requestController.add(RequestUpdate(userId: data['userId'] as String, accepted: data['status'] == 'accepted'));
+      case 'emergency:alert' || 'emergency:update' || 'emergency:resolved':
+        final type = switch (message['event']) {
+          'emergency:alert' => EmergencyEventType.alert,
+          'emergency:update' => EmergencyEventType.update,
+          _ => EmergencyEventType.resolved,
+        };
+        _emergencyController.add(
+          EmergencyEvent(type, EmergencyAlert.fromJson(message['data'] as Map<String, dynamic>)),
+        );
+      case 'emergency:strike':
+        _sosStrikeController.add(SosStanding.fromJson(message['data'] as Map<String, dynamic>));
       case 'ask:answer':
         final data = message['data'] as Map<String, dynamic>;
         _askAnswerController.add(
@@ -290,6 +318,8 @@ class RealtimeService {
     _readController.close();
     _requestController.close();
     _askAnswerController.close();
+    _emergencyController.close();
+    _sosStrikeController.close();
     _chatController.close();
   }
 }

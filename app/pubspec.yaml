@@ -51,6 +51,7 @@ dependencies:
   unifiedpush_android: ^3.5.0
   unifiedpush_platform_interface: ^4.0.0
   path_provider: ^2.1.6
+  audioplayers: ^6.8.1
 
 dev_dependencies:
   flutter_test:
@@ -81,6 +82,7 @@ flutter:
   assets:
     - assets/mascot/
     - assets/avatars/
+    - assets/sounds/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

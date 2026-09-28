@@ -19,5 +19,7 @@ import { RealtimeGateway } from './realtime.gateway.js';
     }),
   ],
   providers: [RealtimeGateway],
+  // Emergency alerts ask it who's Reachable nearby.
+  exports: [RealtimeGateway],
 })
 export class RealtimeModule {}

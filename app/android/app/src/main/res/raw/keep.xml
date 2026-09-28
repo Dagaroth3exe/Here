@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The siren is only referenced from Dart (the emergency notification
+     channel's sound), so stop release resource shrinking from dropping it. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:keep="@raw/siren" />

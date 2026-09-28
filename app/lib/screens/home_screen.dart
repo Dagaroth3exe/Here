@@ -11,11 +11,16 @@ import '../services/avatar_controller.dart';
 import '../services/profile_api.dart';
 import '../services/profile_controller.dart';
 import '../services/location_service.dart';
+import '../services/emergency_api.dart';
+import '../services/emergency_center.dart';
+import '../services/reachability_controller.dart';
 import '../services/realtime_service.dart';
 import '../utils/initials.dart';
 import '../widgets/avatar_thumb.dart';
 import '../widgets/mini_map.dart';
 import 'edit_reachability_screen.dart';
+import 'emergency_alert_screen.dart';
+import 'emergency_screen.dart';
 import 'profile_screen.dart';
 
 /// Rebuilds [accent] at a fixed saturation/lightness, keeping its hue — lets
@@ -34,7 +39,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  bool _reachable = true;
+  bool get _reachable => ReachabilityController.on.value;
   int _reachableCount = 0;
   StreamSubscription<List<ReachablePerson>>? _peopleSub;
   StreamSubscription<ChatMessage>? _requestSub;
@@ -51,8 +56,9 @@ class _HomeScreenState extends State<HomeScreen> {
     _requestSub = RealtimeService.instance.chatStream
         .where((m) => m.pending && m.fromId != AuthSession.userId)
         .listen((request) => _notify(t('{name} sent you a chat request', {'name': request.fromName})));
-    _answerSub = RealtimeService.instance.askAnswerStream
-        .listen((_) => _notify(t('Someone answered your question on Ask HERE')));
+    _answerSub = RealtimeService.instance.askAnswerStream.listen(
+      (_) => _notify(t('Someone answered your question on Ask HERE')),
+    );
     if (_reachable) _goReachable();
   }
 
@@ -74,7 +80,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _toggle() {
-    setState(() => _reachable = !_reachable);
+    setState(() => ReachabilityController.on.value = !_reachable);
     if (_reachable) {
       _goReachable();
     } else {
@@ -99,8 +105,7 @@ class _HomeScreenState extends State<HomeScreen> {
         padding: const EdgeInsets.only(bottom: 24),
         children: [
           _Header(
-            onAvatarTap: () => Navigator.of(context)
-                .push(MaterialPageRoute(builder: (_) => const ProfileScreen())),
+            onAvatarTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProfileScreen())),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
@@ -149,9 +154,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 builder: (context, profile, _) {
                   return _OpenToSection(
                     categories: profile?.categories ?? const [],
-                    onEdit: () => Navigator.of(
-                      context,
-                    ).push(MaterialPageRoute(builder: (_) => const EditReachabilityScreen())),
+                    onEdit: () =>
+                        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const EditReachabilityScreen())),
                   );
                 },
               ),
@@ -256,16 +260,18 @@ class _PoweredDownState extends State<_PoweredDown> with TickerProviderStateMixi
     super.dispose();
   }
 
-  /// A saturation matrix: 1 keeps full color, 0 is pure greyscale.
-  static List<double> _saturation(double s) {
+  /// A saturation matrix: 1 keeps full color, 0 is pure greyscale; then
+  /// scaled by [brightness] (1 leaves it as is).
+  static List<double> _saturation(double s, {double brightness = 1}) {
     const r = 0.2126, g = 0.7152, b = 0.0722;
     final i = 1 - s;
+    final k = brightness;
     // dart format off
     return [
-      r * i + s, g * i,     b * i,     0, 0,
-      r * i,     g * i + s, b * i,     0, 0,
-      r * i,     g * i,     b * i + s, 0, 0,
-      0,         0,         0,         1, 0,
+      (r * i + s) * k, g * i * k,       b * i * k,       0, 0,
+      r * i * k,       (g * i + s) * k, b * i * k,       0, 0,
+      r * i * k,       g * i * k,       (b * i + s) * k, 0, 0,
+      0,               0,               0,               1, 0,
     ];
     // dart format on
   }
@@ -287,13 +293,75 @@ class _PoweredDownState extends State<_PoweredDown> with TickerProviderStateMixi
           // Expanded still fills its slot instead of shrinking to content.
           fit: StackFit.passthrough,
           children: [
-            ColorFiltered(colorFilter: ColorFilter.matrix(_saturation(1 - 0.9 * dim)), child: child),
+            ColorFiltered(
+              colorFilter: ColorFilter.matrix(_saturation(1 - dim, brightness: 1 - 0.15 * dim)),
+              child: child,
+            ),
             Positioned.fill(
-              child: IgnorePointer(child: ColoredBox(color: paper.withValues(alpha: 0.45 * dim))),
+              child: IgnorePointer(
+                child: ColoredBox(color: paper.withValues(alpha: 0.45 * dim)),
+              ),
             ),
           ],
         );
       },
+    );
+  }
+}
+
+/// Always-red emergency button — kept out of the Reachable greying (a fixed
+/// color, not a theme one), since it must be findable in the worst moment.
+/// Pulses while your own alert is running.
+class _SosButton extends StatelessWidget {
+  const _SosButton();
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<EmergencyAlert?>(
+      valueListenable: EmergencyCenter.instance.mine,
+      builder: (context, active, _) => Semantics(
+        button: true,
+        label: active != null ? t('Your emergency alert is on') : t('Emergency'),
+        excludeSemantics: true,
+        child: Material(
+          color: emergencyRed,
+          shape: const StadiumBorder(),
+          child: InkWell(
+            customBorder: const StadiumBorder(),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const EmergencyScreen())),
+            child: Container(
+              height: 46,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              alignment: Alignment.center,
+              decoration: active != null
+                  ? BoxDecoration(
+                      shape: BoxShape.rectangle,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: Colors.white, width: 2),
+                    )
+                  : null,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.sos_rounded, color: Colors.white, size: 20),
+                  if (active != null) ...[
+                    const SizedBox(width: 6),
+                    Text(
+                      t('ON'),
+                      style: const TextStyle(
+                        fontFamily: 'Outfit',
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -315,21 +383,11 @@ class _Header extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'HERE',
-                  style: AppText.wordmark.copyWith(
-                    color: colors.ink,
-                    fontSize: 30,
-                  ),
-                ),
+                Text('HERE', style: AppText.wordmark.copyWith(color: colors.ink, fontSize: 30)),
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    Icon(
-                      Icons.location_on_outlined,
-                      size: 14,
-                      color: colors.greenInk,
-                    ),
+                    Icon(Icons.location_on_outlined, size: 14, color: colors.greenInk),
                     const SizedBox(width: 4),
                     Flexible(
                       child: Text(
@@ -344,6 +402,8 @@ class _Header extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
+          const _SosButton(),
+          const SizedBox(width: 10),
           GestureDetector(
             key: const Key('profileAvatar'),
             onTap: onAvatarTap,
@@ -360,7 +420,7 @@ class _Header extends StatelessWidget {
                     border: Border.all(color: colors.hairlineChip),
                   ),
                   child: avatar != null
-                      ? AvatarThumb(source: avatar, size: 46)
+                      ? AvatarThumb(source: avatar, size: 46, grey: !ReachabilityController.on.value)
                       : Text(
                           initialsFor(AuthSession.name ?? 'You'),
                           style: TextStyle(
@@ -395,8 +455,7 @@ class _StatusCard extends StatefulWidget {
 }
 
 class _StatusCardState extends State<_StatusCard> with TickerProviderStateMixin {
-  late final AnimationController _brightnessCtrl =
-      AnimationController(vsync: this, value: widget.reachable ? 1 : 0);
+  late final AnimationController _brightnessCtrl = AnimationController(vsync: this, value: widget.reachable ? 1 : 0);
 
   int _runId = 0;
   bool _disposed = false;
@@ -466,15 +525,10 @@ class _StatusCardState extends State<_StatusCard> with TickerProviderStateMixin 
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [
-                    Color.lerp(colors.surface, onColorA, lit)!,
-                    Color.lerp(colors.surface, onColorB, lit)!,
-                  ],
+                  colors: [Color.lerp(colors.surface, onColorA, lit)!, Color.lerp(colors.surface, onColorB, lit)!],
                 ),
                 borderRadius: BorderRadius.circular(28),
-                border: Border.all(
-                  color: Color.lerp(colors.hairlineDashed, colors.reachableCardBorder, lit)!,
-                ),
+                border: Border.all(color: Color.lerp(colors.hairlineDashed, colors.reachableCardBorder, lit)!),
                 boxShadow: lit > 0.02
                     ? [
                         BoxShadow(
@@ -511,30 +565,19 @@ class _StatusCardState extends State<_StatusCard> with TickerProviderStateMixin 
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 7,
-                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                             decoration: BoxDecoration(
-                              color: reachable
-                                  ? Colors.white.withValues(alpha: 0.14)
-                                  : colors.sand,
+                              color: reachable ? Colors.white.withValues(alpha: 0.14) : colors.sand,
                               borderRadius: BorderRadius.circular(999),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(
-                                  Icons.radar_rounded,
-                                  size: 15,
-                                  color: reachable ? Colors.white : colors.ink70,
-                                ),
+                                Icon(Icons.radar_rounded, size: 15, color: reachable ? Colors.white : colors.ink70),
                                 const SizedBox(width: 8),
                                 Text(
                                   t('YOUR STATUS'),
-                                  style: AppText.statusEyebrow.copyWith(
-                                    color: reachable ? Colors.white : colors.ink70,
-                                  ),
+                                  style: AppText.statusEyebrow.copyWith(color: reachable ? Colors.white : colors.ink70),
                                 ),
                               ],
                             ),
@@ -548,9 +591,7 @@ class _StatusCardState extends State<_StatusCard> with TickerProviderStateMixin 
                         children: [
                           Text(
                             t(reachable ? "You're Reachable" : 'Not Reachable'),
-                            style: AppText.statusTitle.copyWith(
-                              color: reachable ? Colors.white : colors.ink,
-                            ),
+                            style: AppText.statusTitle.copyWith(color: reachable ? Colors.white : colors.ink),
                           ),
                           const SizedBox(height: 7),
                           ConstrainedBox(
@@ -562,9 +603,7 @@ class _StatusCardState extends State<_StatusCard> with TickerProviderStateMixin 
                                     : 'Tap to let nearby people reach you.',
                               ),
                               style: AppText.statusSubtext.copyWith(
-                                color: reachable
-                                    ? Colors.white.withValues(alpha: 0.85)
-                                    : colors.ink70,
+                                color: reachable ? Colors.white.withValues(alpha: 0.85) : colors.ink70,
                               ),
                             ),
                           ),
@@ -677,7 +716,8 @@ class _BulbPainter extends CustomPainter {
     // color once lit, like colored neon glass catching its own light. A
     // brighter, whiter-edged rim than before so the outline pops against a
     // similarly-colored card rather than melting into it.
-    final glassFill = Paint()..color = Color.lerp(const Color(0x38403A4E), glowColor.withValues(alpha: 0.62), intensity)!;
+    final glassFill = Paint()
+      ..color = Color.lerp(const Color(0x38403A4E), glowColor.withValues(alpha: 0.62), intensity)!;
     canvas.drawCircle(glassCenter, _bulbRadius, glassFill);
     final glassBorder = Paint()
       ..style = PaintingStyle.stroke
@@ -718,7 +758,11 @@ class _BulbPainter extends CustomPainter {
       ..strokeWidth = 1.6
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
-      ..color = Color.lerp(const Color(0xFF6B5F4E), Color.lerp(_filamentYellow, Colors.white, 0.4 * intensity), intensity)!;
+      ..color = Color.lerp(
+        const Color(0xFF6B5F4E),
+        Color.lerp(_filamentYellow, Colors.white, 0.4 * intensity),
+        intensity,
+      )!;
     if (intensity > 0.05) {
       filamentPaint.maskFilter = MaskFilter.blur(BlurStyle.normal, 1.5 + 2.5 * intensity);
     }
@@ -751,9 +795,7 @@ class _VerticalSwitch extends StatelessWidget {
       height: 32,
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: on
-            ? Colors.white.withValues(alpha: 0.25)
-            : colors.switchTrackOff,
+        color: on ? Colors.white.withValues(alpha: 0.25) : colors.switchTrackOff,
         borderRadius: BorderRadius.circular(999),
       ),
       child: AnimatedAlign(
@@ -767,13 +809,7 @@ class _VerticalSwitch extends StatelessWidget {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: Colors.white,
-            boxShadow: const [
-              BoxShadow(
-                color: Color.fromRGBO(0, 0, 0, 0.1),
-                blurRadius: 4,
-                offset: Offset(0, 1),
-              ),
-            ],
+            boxShadow: const [BoxShadow(color: Color.fromRGBO(0, 0, 0, 0.1), blurRadius: 4, offset: Offset(0, 1))],
           ),
         ),
       ),
@@ -782,10 +818,8 @@ class _VerticalSwitch extends StatelessWidget {
 }
 
 class _StatCard extends StatelessWidget {
-  const _StatCard.plain({required this.value, required this.caption})
-    : reachable = false;
-  const _StatCard.reachable({required this.value, required this.caption})
-    : reachable = true;
+  const _StatCard.plain({required this.value, required this.caption}) : reachable = false;
+  const _StatCard.reachable({required this.value, required this.caption}) : reachable = true;
 
   final String value;
   final String caption;
@@ -799,18 +833,14 @@ class _StatCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: colors.surface,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: reachable ? colors.reachableStatBorder : colors.hairline,
-        ),
+        border: Border.all(color: reachable ? colors.reachableStatBorder : colors.hairline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            reachable
-                ? Icons.waving_hand_outlined
-                : Icons.people_outline_rounded,
+            reachable ? Icons.waving_hand_outlined : Icons.people_outline_rounded,
             size: 20,
             color: reachable ? colors.greenInk : colors.ink50,
           ),
@@ -822,16 +852,10 @@ class _StatCard extends StatelessWidget {
                 Container(
                   width: 8,
                   height: 8,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: colors.green,
-                  ),
+                  decoration: BoxDecoration(shape: BoxShape.circle, color: colors.green),
                 ),
                 const SizedBox(width: 7),
-                Text(
-                  value,
-                  style: AppText.bigNumeral.copyWith(color: colors.ink),
-                ),
+                Text(value, style: AppText.bigNumeral.copyWith(color: colors.ink)),
               ],
             )
           else
@@ -861,10 +885,7 @@ class _OpenToSection extends StatelessWidget {
           textBaseline: TextBaseline.alphabetic,
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              t("You're open to"),
-              style: AppText.sectionHeader.copyWith(color: colors.ink),
-            ),
+            Text(t("You're open to"), style: AppText.sectionHeader.copyWith(color: colors.ink)),
             GestureDetector(
               onTap: onEdit,
               child: Text(
@@ -891,10 +912,7 @@ class _OpenToSection extends StatelessWidget {
               ),
               child: Text(
                 t('Choose what you want to be pinged about'),
-                style: AppText.chipLabel.copyWith(
-                  color: colors.ink40,
-                  fontWeight: FontWeight.w400,
-                ),
+                style: AppText.chipLabel.copyWith(color: colors.ink40, fontWeight: FontWeight.w400),
               ),
             ),
           )
@@ -915,9 +933,7 @@ class _OpenToSection extends StatelessWidget {
                   ),
                   child: Text(
                     t(labelForCategory(category)),
-                    style: AppText.chipLabel.copyWith(
-                      color: category == 'dating' ? colors.dating : colors.ink70,
-                    ),
+                    style: AppText.chipLabel.copyWith(color: category == 'dating' ? colors.dating : colors.ink70),
                   ),
                 ),
             ],
@@ -943,24 +959,13 @@ class _ReputationCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            t('Helped 32 people · replies in ~4 min'),
-            style: AppText.reputationLine.copyWith(color: colors.ink50),
-          ),
+          Text(t('Helped 32 people · replies in ~4 min'), style: AppText.reputationLine.copyWith(color: colors.ink50)),
           const SizedBox(height: 9),
           Row(
             children: [
-              _Badge(
-                text: t('TRUSTED HELPER'),
-                color: colors.trust,
-                background: colors.trustTint,
-              ),
+              _Badge(text: t('TRUSTED HELPER'), color: colors.trust, background: colors.trustTint),
               const SizedBox(width: 8),
-              _Badge(
-                text: t('LOCAL · 3 YRS'),
-                color: colors.inkMutedAvatar,
-                background: colors.sand,
-              ),
+              _Badge(text: t('LOCAL · 3 YRS'), color: colors.inkMutedAvatar, background: colors.sand),
             ],
           ),
         ],
@@ -970,11 +975,7 @@ class _ReputationCard extends StatelessWidget {
 }
 
 class _Badge extends StatelessWidget {
-  const _Badge({
-    required this.text,
-    required this.color,
-    required this.background,
-  });
+  const _Badge({required this.text, required this.color, required this.background});
 
   final String text;
   final Color color;
@@ -984,10 +985,7 @@ class _Badge extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(6),
-      ),
+      decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(6)),
       child: Text(text, style: AppText.reputationBadge.copyWith(color: color)),
     );
   }

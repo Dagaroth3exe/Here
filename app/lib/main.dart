@@ -7,6 +7,7 @@ import 'screens/splash_screen.dart';
 import 'services/accent_controller.dart';
 import 'services/auth_session.dart';
 import 'services/push_notifications.dart';
+import 'services/reachability_controller.dart';
 import 'services/theme_controller.dart';
 
 Future<void> main(List<String> args) async {
@@ -26,11 +27,7 @@ Future<void> main(List<String> args) async {
 /// subtle glow instead.
 class _AppScrollBehavior extends MaterialScrollBehavior {
   @override
-  Widget buildOverscrollIndicator(
-    BuildContext context,
-    Widget child,
-    ScrollableDetails details,
-  ) {
+  Widget buildOverscrollIndicator(BuildContext context, Widget child, ScrollableDetails details) {
     return GlowingOverscrollIndicator(
       axisDirection: details.direction,
       color: context.colors.ink.withValues(alpha: 0.06),
@@ -74,9 +71,9 @@ class _HereAppState extends State<HereApp> {
         return ValueListenableBuilder<Locale>(
           valueListenable: AppLocale.current,
           builder: (context, locale, _) {
-            return ValueListenableBuilder<double?>(
-              valueListenable: AccentController.hue,
-              builder: (context, _, _) {
+            return ListenableBuilder(
+              listenable: Listenable.merge([AccentController.hue, ReachabilityController.on]),
+              builder: (context, _) {
                 final lightColors = AppColors.light.resolveAccent(dark: false);
                 final darkColors = AppColors.dark.resolveAccent(dark: true);
                 return MaterialApp(

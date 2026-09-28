@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+
 import '../services/accent_controller.dart';
+import '../services/reachability_controller.dart';
 
 /// Design tokens ported from the HERE design handoff (Home / Discover),
 /// with a dark variant added alongside the original light palette.
@@ -121,7 +123,8 @@ class AppColors {
   final Color datingTint;
 
   static const light = AppColors(
-    paper: Color(0xFFFAF9FD),
+    // A shade under pure white, so white `surface` cards stand off the page.
+    paper: Color(0xFFF2EFF8),
     surface: Color(0xFFFFFFFF),
     sand: Color(0xFFF0ECF7),
     sandDeep: Color(0xFFDDD0F0),
@@ -142,7 +145,7 @@ class AppColors {
     greenTint: Color(0xFFF1EBFB),
     greenTintBadge: Color.fromRGBO(132, 87, 232, 0.1),
     greenTrack: Color.fromRGBO(132, 87, 232, 0.2),
-    hairline: Color.fromRGBO(34, 23, 51, 0.07),
+    hairline: Color.fromRGBO(34, 23, 51, 0.11),
     hairlineChip: Color.fromRGBO(34, 23, 51, 0.14),
     hairlineDashed: Color.fromRGBO(34, 23, 51, 0.18),
     reachableCardBorder: Color.fromRGBO(132, 87, 232, 0.28),
@@ -214,9 +217,67 @@ class AppColors {
   /// Applies the current [AccentController] hue (if any) on top of this
   /// palette — used both by [of] and by `main.dart`'s `MaterialApp` theme,
   /// which needs the resolved colors before a [BuildContext] even exists.
+  ///
+  /// While you're not Reachable, the result is drained to greyscale — the
+  /// whole app goes quiet, not just Home. Done here in the palette rather
+  /// than with a color filter over the screen, so it costs nothing to draw.
   AppColors resolveAccent({required bool dark}) {
     final hue = AccentController.hue.value;
-    return hue == null ? this : _withAccentHue(hue, dark: dark);
+    final colors = hue == null ? this : _withAccentHue(hue, dark: dark);
+    return ReachabilityController.on.value ? colors : colors._greyed(dark: dark);
+  }
+
+  /// Every color at zero saturation, keeping its lightness and alpha — except
+  /// the error pair, which should still read as a problem.
+  ///
+  /// The light theme's surfaces are near-white, and merely desaturated they'd
+  /// still look white rather than switched off; so there they also drop to
+  /// clearly grey shades (page darker than cards, so cards still stand out).
+  AppColors _greyed({required bool dark}) {
+    Color g(Color c) => HSLColor.fromColor(c).withSaturation(0).toColor();
+    Color shade(Color c, double lightness) => dark ? g(c) : HSLColor.fromAHSL(c.a, 0, 0, lightness).toColor();
+    return AppColors(
+      paper: shade(paper, 0.78),
+      surface: shade(surface, 0.86),
+      sand: shade(sand, 0.80),
+      sandDeep: shade(sandDeep, 0.72),
+      sandBlock: shade(sandBlock, 0.75),
+      ink: g(ink),
+      ink70: g(ink70),
+      ink55: g(ink55),
+      ink50: g(ink50),
+      ink45: g(ink45),
+      ink42: g(ink42),
+      ink40: g(ink40),
+      ink38: g(ink38),
+      ink35: g(ink35),
+      inkMutedAvatar: g(inkMutedAvatar),
+      green: g(green),
+      greenInk: g(greenInk),
+      greenInkDeep: g(greenInkDeep),
+      greenTint: shade(greenTint, 0.74),
+      greenTintBadge: g(greenTintBadge),
+      greenTrack: g(greenTrack),
+      hairline: dark ? g(hairline) : const Color.fromRGBO(0, 0, 0, 0.14),
+      hairlineChip: g(hairlineChip),
+      hairlineDashed: g(hairlineDashed),
+      reachableCardBorder: g(reachableCardBorder),
+      reachableStatBorder: g(reachableStatBorder),
+      mapHalo: shade(mapHalo, 0.86),
+      mapOverlay: shade(mapOverlay, 0.86),
+      nonReachableDot: g(nonReachableDot),
+      statusEyebrowOn: g(statusEyebrowOn),
+      statusSubtextOn: g(statusSubtextOn),
+      switchTrackOff: g(switchTrackOff),
+      error: error,
+      errorTint: errorTint,
+      trust: g(trust),
+      trustTint: g(trustTint),
+      success: g(success),
+      successTint: g(successTint),
+      dating: g(dating),
+      datingTint: g(datingTint),
+    );
   }
 
   /// Recomputes the brand-accent family (`green*`/`reachable*`/`status*On`)

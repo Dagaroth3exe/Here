@@ -39,6 +39,15 @@ interface ConnectedUser {
  */
 const coarsen = (value: number) => Math.round(value * 1000) / 1000;
 
+/** Great-circle distance in meters between two coordinates. */
+function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const rad = Math.PI / 180;
+  const dLat = (lat2 - lat1) * rad;
+  const dLng = (lng2 - lng1) * rad;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6_371_000 * Math.asin(Math.sqrt(h));
+}
+
 /** Attached to each socket so handleDisconnect can find who it was. */
 type TrackedSocket = WebSocket & { hereUserId?: string };
 
@@ -151,6 +160,17 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     } catch (error) {
       this.logger.warn(`chat:send from ${fromId} rejected: ${(error as Error).message}`);
     }
+  }
+
+  /**
+   * Reachable people whose last shared position is within [radiusMeters] —
+   * who an emergency alert goes to. Positions are coarsened (~110 m), which
+   * is plenty at this scale.
+   */
+  nearbyUserIds(lat: number, lng: number, radiusMeters: number): string[] {
+    return [...this.users.values()]
+      .filter((u) => u.lat != null && u.lng != null && distanceMeters(lat, lng, u.lat, u.lng) <= radiusMeters)
+      .map((u) => u.id);
   }
 
   /** Everyone gets the Reachable list minus people they've blocked or who blocked them. */

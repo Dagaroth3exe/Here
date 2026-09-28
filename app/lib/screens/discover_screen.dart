@@ -6,6 +6,7 @@ import '../design/colors.dart';
 import '../design/typography.dart';
 import '../l10n/strings.dart';
 import '../services/auth_session.dart';
+import '../services/reachability_controller.dart';
 import '../services/realtime_service.dart';
 import '../utils/initials.dart';
 import '../widgets/empty_state.dart';
@@ -35,6 +36,26 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   /// The person picked on the map or in the list — highlighted in both.
   String? _selectedId;
   final Map<String, GlobalKey> _cardKeys = {};
+
+  /// Keeps the native map alive as [_greyWhenOff] wraps and unwraps it.
+  final _mapKey = GlobalKey();
+
+  /// The theme greys everything it draws while you're not Reachable, but the
+  /// map's tiles come from the native view — filter those too, and only then,
+  /// since a filter over a platform view isn't free.
+  Widget _greyWhenOff(Widget map) {
+    if (ReachabilityController.on.value) return map;
+    // dart format off
+    // Greyscale, dimmed to ~82% so the bright tiles sit with the grey page.
+    const greyscale = ColorFilter.matrix([
+      0.1743, 0.5865, 0.0592, 0, 0,
+      0.1743, 0.5865, 0.0592, 0, 0,
+      0.1743, 0.5865, 0.0592, 0, 0,
+      0,      0,      0,      1, 0,
+    ]);
+    // dart format on
+    return ColorFiltered(colorFilter: greyscale, child: map);
+  }
 
   @override
   void initState() {
@@ -174,14 +195,19 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                   border: Border.all(color: colors.hairline),
                   borderRadius: BorderRadius.circular(24),
                 ),
-                child: MapCanvas(
-                  // Being connected is being Reachable (see RealtimeService),
-                  // and the people stream rebuilds this when that changes.
-                  locationEnabled: RealtimeService.instance.isConnected,
-                  interactive: true,
-                  selectedPersonId: _selectedId,
-                  onPersonSelected: _selectFromMap,
-                  onPeopleInViewChanged: _onPeopleInViewChanged,
+                child: _greyWhenOff(
+                  KeyedSubtree(
+                    key: _mapKey,
+                    child: MapCanvas(
+                      // Being connected is being Reachable (see RealtimeService),
+                      // and the people stream rebuilds this when that changes.
+                      locationEnabled: RealtimeService.instance.isConnected,
+                      interactive: true,
+                      selectedPersonId: _selectedId,
+                      onPersonSelected: _selectFromMap,
+                      onPeopleInViewChanged: _onPeopleInViewChanged,
+                    ),
+                  ),
                 ),
               ),
             ),

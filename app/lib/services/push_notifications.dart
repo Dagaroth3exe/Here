@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -10,7 +11,9 @@ import 'package:unifiedpush_platform_interface/unifiedpush_platform_interface.da
 
 import '../screens/ask_question_screen.dart';
 import '../screens/chat_thread_screen.dart';
+import '../screens/emergency_screen.dart';
 import 'auth_session.dart';
+import 'emergency_center.dart';
 
 /// The UnifiedPush instance name — one registration per app install.
 const _instance = 'default';
@@ -37,6 +40,24 @@ class PushNotifications {
     channelDescription: 'Chat messages, chat requests, and answers to your questions',
     importance: Importance.high,
     priority: Priority.high,
+  );
+
+  /// Someone nearby is in danger: loudest, most intrusive the phone allows —
+  /// the siren as its sound, on the alarm stream (heard in "vibrate only" /
+  /// Do Not Disturb setups where media and notifications are muted).
+  static final _emergencyChannel = AndroidNotificationDetails(
+    'here_emergency',
+    'Emergencies nearby',
+    channelDescription: 'Someone near you raised the alarm and needs immediate help',
+    importance: Importance.max,
+    priority: Priority.max,
+    category: AndroidNotificationCategory.alarm,
+    sound: const RawResourceAndroidNotificationSound('siren'),
+    audioAttributesUsage: AudioAttributesUsage.alarm,
+    enableVibration: true,
+    vibrationPattern: Int64List.fromList([0, 800, 400, 800, 400, 800, 400, 800]),
+    color: const Color(0xFFD32F2F),
+    ticker: 'Emergency nearby',
   );
   static PushEndpoint? _endpoint;
   static int _nextId = 0;
@@ -134,7 +155,9 @@ class PushNotifications {
       id: _nextId++,
       title: notice['title'] as String?,
       body: notice['body'] as String?,
-      notificationDetails: const NotificationDetails(android: _channel),
+      notificationDetails: NotificationDetails(
+        android: (notice['data'] as Map?)?['kind'] == 'emergency' ? _emergencyChannel : _channel,
+      ),
       payload: jsonEncode(notice['data'] ?? const {}),
     );
   }
@@ -146,16 +169,21 @@ class PushNotifications {
     final data = (jsonDecode(payload) as Map).cast<String, dynamic>();
     switch (data['kind']) {
       case 'message' || 'request':
-        navigator.push(MaterialPageRoute<void>(
-          builder: (_) => ChatThreadScreen(
-            otherUserId: data['userId'] as String,
-            otherName: data['name'] as String? ?? '',
+        navigator.push(
+          MaterialPageRoute<void>(
+            builder: (_) =>
+                ChatThreadScreen(otherUserId: data['userId'] as String, otherName: data['name'] as String? ?? ''),
           ),
-        ));
+        );
+      case 'emergency':
+        EmergencyCenter.instance.open(data['emergencyId'] as String);
+      case 'sos':
+        EmergencyCenter.instance.refreshStanding();
+        navigator.push(MaterialPageRoute<void>(builder: (_) => const EmergencyScreen()));
       case 'answer':
-        navigator.push(MaterialPageRoute<void>(
-          builder: (_) => AskQuestionScreen(questionId: data['questionId'] as String),
-        ));
+        navigator.push(
+          MaterialPageRoute<void>(builder: (_) => AskQuestionScreen(questionId: data['questionId'] as String)),
+        );
     }
   }
 }
