@@ -1,8 +1,8 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'auth_api.dart';
 import 'realtime_service.dart';
+import 'api_config.dart';
 
 /// Where a conversation stands for the viewer: `incoming` is a chat request
 /// waiting for them, `outgoing` one they're waiting on, `declined` their
@@ -137,7 +137,7 @@ class ChatApiException extends AuthApiException {
 class ChatApi {
   ChatApi._();
 
-  static String get _baseUrl => Platform.isAndroid ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
+  static String get _baseUrl => ApiConfig.baseUrl;
 
   static Future<List<ConversationSummary>> getConversations(String accessToken) async {
     final json = await _request('GET', '/chat/conversations', accessToken) as List;

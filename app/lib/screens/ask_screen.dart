@@ -11,7 +11,7 @@ import '../services/location_service.dart';
 import '../widgets/ask_widgets.dart';
 import 'ask_question_screen.dart';
 
-/// The "Ask HERE" tab: ask anything and see what real people who were in the
+/// The "Ask HERE" panel (opened from the floating button): ask anything and see what real people who were in the
 /// same situation said on community forums — their replies as they wrote
 /// them, a summary of only what they said, and nearby places when relevant.
 ///
@@ -19,7 +19,10 @@ import 'ask_question_screen.dart';
 /// who ask something similar later see it and its answers first, and anyone
 /// can answer it.
 class AskScreen extends StatefulWidget {
-  const AskScreen({super.key});
+  const AskScreen({super.key, this.onClose});
+
+  /// Shows a close button that calls this (the panel slides away).
+  final VoidCallback? onClose;
 
   @override
   State<AskScreen> createState() => _AskScreenState();
@@ -157,21 +160,35 @@ class _AskScreenState extends State<AskScreen> {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    return ColoredBox(
+    // Its own Material: it floats over the tabs, so ripples must draw here.
+    return Material(
       color: colors.paper,
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(24, 28, 24, 12),
-            child: Column(
+            padding: const EdgeInsets.fromLTRB(24, 28, 12, 12),
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(t('Ask HERE'), style: AppText.screenTitle.copyWith(color: colors.ink)),
-                const SizedBox(height: 4),
-                Text(
-                  t('Ask anything. See what people who were in the same situation said.'),
-                  style: AppText.reputationLine.copyWith(color: colors.ink50),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(t('Ask HERE'), style: AppText.screenTitle.copyWith(color: colors.ink)),
+                      const SizedBox(height: 4),
+                      Text(
+                        t('Ask anything. See what people who were in the same situation said.'),
+                        style: AppText.reputationLine.copyWith(color: colors.ink50),
+                      ),
+                    ],
+                  ),
                 ),
+                if (widget.onClose != null)
+                  IconButton(
+                    tooltip: t('Close'),
+                    onPressed: widget.onClose,
+                    icon: Icon(Icons.close_rounded, color: colors.ink70),
+                  ),
               ],
             ),
           ),

@@ -15,3 +15,22 @@ export class AreaPreferenceDto {
   @IsBoolean()
   notices: boolean;
 }
+
+/** The map's visible box. */
+export class AreaBoundsDto {
+  @Type(() => Number)
+  @IsLatitude()
+  south: number;
+
+  @Type(() => Number)
+  @IsLongitude()
+  west: number;
+
+  @Type(() => Number)
+  @IsLatitude()
+  north: number;
+
+  @Type(() => Number)
+  @IsLongitude()
+  east: number;
+}

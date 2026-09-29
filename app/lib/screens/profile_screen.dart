@@ -12,12 +12,12 @@ import '../services/avatar_controller.dart';
 import '../services/profile_api.dart';
 import '../services/profile_controller.dart';
 import '../utils/initials.dart';
+import '../widgets/area_info.dart';
 import '../widgets/avatar_thumb.dart';
 import 'auth/auth_screen.dart';
 import 'edit_profile_screen.dart';
 import 'emergency_alert_screen.dart';
 import 'emergency_screen.dart';
-import 'home_screen.dart';
 import 'settings_screen.dart';
 
 class ProfileScreen extends StatelessWidget {

@@ -13,6 +13,7 @@ import '../widgets/empty_state.dart';
 import '../widgets/map_canvas.dart';
 import '../widgets/ping_sheet.dart';
 import 'chat_thread_screen.dart';
+import '../widgets/app_tab_bar.dart' show floatingButtonClearance;
 
 /// Live "who's Reachable right now" — sourced entirely from the realtime
 /// WebSocket connection (see [RealtimeService]), not sample data. Pinging
@@ -255,7 +256,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     );
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(22, 12, 22, 20),
+      padding: const EdgeInsets.fromLTRB(22, 12, 22, floatingButtonClearance),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

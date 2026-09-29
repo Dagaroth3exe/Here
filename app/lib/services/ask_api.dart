@@ -1,7 +1,7 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'auth_api.dart';
+import 'api_config.dart';
 
 /// A real reply from someone on a community forum, quoted as they wrote it.
 class CommunityReply {
@@ -268,7 +268,7 @@ class AskFailed extends AskEvent {
 class AskApi {
   AskApi._();
 
-  static String get _baseUrl => Platform.isAndroid ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
+  static String get _baseUrl => ApiConfig.baseUrl;
 
   static Stream<AskEvent> ask(
     String accessToken,

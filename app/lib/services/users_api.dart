@@ -1,7 +1,7 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'auth_api.dart';
+import 'api_config.dart';
 
 class UserSearchResult {
   const UserSearchResult({required this.id, required this.username});
@@ -19,7 +19,7 @@ class UserSearchResult {
 class UsersApi {
   UsersApi._();
 
-  static String get _baseUrl => Platform.isAndroid ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
+  static String get _baseUrl => ApiConfig.baseUrl;
 
   static Future<List<UserSearchResult>> search(String accessToken, String query) async {
     if (query.trim().isEmpty) return [];

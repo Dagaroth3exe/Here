@@ -1,6 +1,6 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'api_config.dart';
 
 /// Thrown for any non-2xx response, carrying the backend's own error message.
 class AuthApiException implements Exception {
@@ -18,15 +18,11 @@ class TotpSetupResult {
 }
 
 /// Talks to the backend's auth endpoints (name+password, plus the
-/// email+TOTP ones kept around for later).
-///
-/// The Android emulator can't reach the host machine via `localhost` — it
-/// has to use the special `10.0.2.2` alias instead. A real device would need
-/// the host's actual LAN address or a deployed URL here.
+/// email+TOTP ones kept around for later). Where the backend is: [ApiConfig].
 class AuthApi {
   AuthApi._();
 
-  static final String _baseUrl = Platform.isAndroid ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
+  static String get _baseUrl => ApiConfig.baseUrl;
 
   static Future<TotpSetupResult> setupTotp(String email) async {
     final json = await _post('/auth/totp/setup', {'email': email});

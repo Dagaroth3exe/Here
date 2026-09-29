@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
@@ -50,7 +51,9 @@ class AccountPrefs {
 
     final avatar = saved['avatar'] as String?;
     // A saved photo can have been removed along with app data.
-    final avatarExists = avatar == null || avatar.startsWith('assets/') || await File(avatar).exists();
+    // (In a browser a picked photo only lives until the page reloads.)
+    final avatarExists =
+        avatar == null || avatar.startsWith('assets/') || (!kIsWeb && await File(avatar).exists());
 
     _applying = true;
     ThemeController.mode.value = ThemeMode.values.asNameMap()[saved['theme']] ?? ThemeMode.system;
@@ -81,7 +84,7 @@ class AccountPrefs {
     final userId = _userId;
     if (_applying || userId == null) return;
     var avatar = AvatarController.selected.value;
-    if (avatar != null && !avatar.startsWith('assets/')) avatar = await _keepPhoto(userId, avatar);
+    if (avatar != null && !avatar.startsWith('assets/')) avatar = kIsWeb ? null : await _keepPhoto(userId, avatar);
     if (_userId != userId) return;
     await _storage.write(
       key: _key(userId),

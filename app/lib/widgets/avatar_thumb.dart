@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 /// Renders a chosen avatar — either one of the bundled `assets/avatars/...`
@@ -36,6 +37,16 @@ class AvatarThumb extends StatelessWidget {
             width: side.isFinite ? side : null,
             height: side.isFinite ? side : null,
             cacheWidth: pixels,
+            fit: BoxFit.cover,
+            color: color,
+            colorBlendMode: blend,
+          )
+        // In a browser a picked photo is a blob: URL, not a file.
+        : kIsWeb
+        ? Image.network(
+            source,
+            width: side.isFinite ? side : null,
+            height: side.isFinite ? side : null,
             fit: BoxFit.cover,
             color: color,
             colorBlendMode: blend,

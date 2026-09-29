@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import 'api_config.dart';
 import 'area_api.dart';
 import 'emergency_api.dart';
 import 'location_service.dart';
@@ -136,8 +136,6 @@ class RealtimeService {
 
   static final instance = RealtimeService._();
 
-  static String get _baseUrl => Platform.isAndroid ? '10.0.2.2:3000' : 'localhost:3000';
-
   WebSocketChannel? _channel;
   StreamSubscription<dynamic>? _subscription;
 
@@ -199,7 +197,7 @@ class RealtimeService {
   }
 
   void _open(String accessToken) {
-    final channel = WebSocketChannel.connect(Uri.parse('ws://$_baseUrl?token=$accessToken'));
+    final channel = WebSocketChannel.connect(ApiConfig.socket('token=$accessToken'));
     _channel = channel;
     _subscription = channel.stream.listen(
       (raw) {

@@ -1,7 +1,7 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'auth_api.dart';
+import 'api_config.dart';
 
 /// What can be reported, matching the backend's `/safety/reports` targets.
 enum ReportTarget { user, message, askQuestion, askAnswer }
@@ -23,7 +23,7 @@ class BlockedPerson {
 class SafetyApi {
   SafetyApi._();
 
-  static String get _baseUrl => Platform.isAndroid ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
+  static String get _baseUrl => ApiConfig.baseUrl;
 
   static Future<void> block(String accessToken, String userId) =>
       _request('POST', '/safety/blocks', accessToken, {'userId': userId});

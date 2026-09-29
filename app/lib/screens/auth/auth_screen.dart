@@ -1,5 +1,4 @@
-import 'dart:io';
-
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../design/colors.dart';
@@ -123,8 +122,10 @@ class _AuthScreenState extends State<AuthScreen> {
                   const SizedBox(height: 20),
                   _OrDivider(),
                   const SizedBox(height: 16),
-                  GoogleSignInButton(onSuccess: _onSuccess),
-                  if (Platform.isIOS) ...[
+                  // Google sign-in on the web needs its own client setup, so
+                  // the browser version offers name/password and phone only.
+                  if (!kIsWeb) GoogleSignInButton(onSuccess: _onSuccess),
+                  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) ...[
                     const SizedBox(height: 12),
                     AppleSignInButton(onSuccess: _onSuccess),
                   ],

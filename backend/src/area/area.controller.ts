@@ -2,7 +2,7 @@ import { Body, Controller, Get, Put, Query, Req, UseGuards } from '@nestjs/commo
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import type { AuthedRequest } from '../auth/jwt-auth.guard.js';
 import { AreaService } from './area.service.js';
-import { AreaPreferenceDto, AreaQueryDto } from './dto/area.dto.js';
+import { AreaBoundsDto, AreaPreferenceDto, AreaQueryDto } from './dto/area.dto.js';
 
 @Controller('area')
 @UseGuards(JwtAuthGuard)
@@ -13,6 +13,12 @@ export class AreaController {
   @Get('summary')
   summary(@Query() query: AreaQueryDto) {
     return this.area.summary(query.lat, query.lng);
+  }
+
+  /** Grid cells with recent alerts inside the visible map box. */
+  @Get('heatmap')
+  heatmap(@Query() box: AreaBoundsDto) {
+    return this.area.heatmap(box);
   }
 
   @Get('preferences')

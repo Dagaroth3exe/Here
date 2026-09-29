@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 
@@ -17,6 +18,10 @@ class LocationService {
   /// map that was told to stop actively locating can still show the last
   /// known position instead of jumping back to the fallback.
   static LatLng? get cached => _cached;
+
+  /// Every new fix, for anything that should follow you (it starts null:
+  /// right after a cold boot the first fix can take a while to arrive).
+  static final ValueNotifier<LatLng?> fixes = ValueNotifier(null);
 
   /// The cached fix if there is one, otherwise a fresh one, otherwise
   /// [fallback] — for anything that just needs *somewhere* to center on.
@@ -57,7 +62,9 @@ class LocationService {
         position = await Geolocator.getLastKnownPosition();
       }
       if (position == null) return null;
-      return _cached = LatLng(position.latitude, position.longitude);
+      final fix = _cached = LatLng(position.latitude, position.longitude);
+      fixes.value = fix;
+      return fix;
     } catch (_) {
       return null;
     }

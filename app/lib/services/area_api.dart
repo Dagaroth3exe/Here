@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'api_config.dart';
 
 enum AreaLevel { quiet, some, several }
 
@@ -111,11 +112,36 @@ class AreaCrime {
   }
 }
 
+/// A grid square (~550 m) where several people raised genuine alerts recently.
+class HeatCell {
+  const HeatCell({
+    required this.south,
+    required this.west,
+    required this.north,
+    required this.east,
+    required this.level,
+    required this.people,
+  });
+
+  final double south, west, north, east;
+  final AreaLevel level;
+  final int people;
+
+  factory HeatCell.fromJson(Map<String, dynamic> json) => HeatCell(
+    south: (json['south'] as num).toDouble(),
+    west: (json['west'] as num).toDouble(),
+    north: (json['north'] as num).toDouble(),
+    east: (json['east'] as num).toDouble(),
+    level: AreaLevel.values.asNameMap()[json['level']] ?? AreaLevel.some,
+    people: json['people'] as int,
+  );
+}
+
 /// Talks to the backend's `/area` endpoints (and `/crime` for official figures).
 class AreaApi {
   AreaApi._();
 
-  static String get _baseUrl => Platform.isAndroid ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
+  static String get _baseUrl => ApiConfig.baseUrl;
 
   static Future<AreaSummary> summary(String token, double lat, double lng) async =>
       AreaSummary.fromJson(await _request('GET', '/area/summary?lat=$lat&lng=$lng', token) as Map<String, dynamic>);
@@ -124,6 +150,25 @@ class AreaApi {
   static Future<AreaCrime?> areaCrime(String token, double lat, double lng) async {
     final json = await _request('GET', '/crime/district?lat=$lat&lng=$lng', token);
     return json == null ? null : AreaCrime.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// Cells with recent alerts inside a map box; `tooWide` when zoomed out too far.
+  static Future<({List<HeatCell> cells, bool tooWide})> heatmap(
+    String token, {
+    required double south,
+    required double west,
+    required double north,
+    required double east,
+  }) async {
+    final json = await _request(
+      'GET',
+      '/area/heatmap?south=$south&west=$west&north=$north&east=$east',
+      token,
+    ) as Map<String, dynamic>;
+    return (
+      cells: [for (final c in (json['cells'] as List).cast<Map<String, dynamic>>()) HeatCell.fromJson(c)],
+      tooWide: json['tooWide'] as bool? ?? false,
+    );
   }
 
   static Future<bool> notices(String token) async =>

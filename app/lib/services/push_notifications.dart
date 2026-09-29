@@ -1,7 +1,6 @@
 import 'dart:convert';
-import 'dart:io';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
@@ -14,6 +13,7 @@ import '../screens/chat_thread_screen.dart';
 import '../screens/emergency_screen.dart';
 import 'auth_session.dart';
 import 'emergency_center.dart';
+import 'api_config.dart';
 
 /// The UnifiedPush instance name — one registration per app install.
 const _instance = 'default';
@@ -62,11 +62,13 @@ class PushNotifications {
   static PushEndpoint? _endpoint;
   static int _nextId = 0;
 
-  static String get _baseUrl => Platform.isAndroid ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
+  static String get _baseUrl => ApiConfig.baseUrl;
 
   /// Call first thing in `main`. [background] is true when Android started
   /// the app only to deliver a push (no UI will be shown).
   static Future<void> init({required bool background}) async {
+    // Browsers: no system notifications or UnifiedPush — in-app alerts only.
+    if (kIsWeb) return;
     await _local.initialize(
       settings: const InitializationSettings(android: AndroidInitializationSettings('@mipmap/ic_launcher')),
       onDidReceiveNotificationResponse: (response) => _open(response.payload),
@@ -87,6 +89,7 @@ class PushNotifications {
   /// After sign-in (and at each start while signed in): ask for notification
   /// permission and register with the phone's distributor, if it has one.
   static Future<void> enable() async {
+    if (kIsWeb) return;
     try {
       await _local
           .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
@@ -106,6 +109,7 @@ class PushNotifications {
 
   /// Before signing out, so this phone stops getting the account's notifications.
   static Future<void> disable() async {
+    if (kIsWeb) return;
     final endpoint = _endpoint;
     final token = AuthSession.accessToken;
     if (endpoint != null && token != null) {
@@ -116,6 +120,7 @@ class PushNotifications {
 
   /// A notification tapped while the app was closed — opened once the UI is up.
   static Future<void> openLaunchNotification() async {
+    if (kIsWeb) return;
     final launch = await _local.getNotificationAppLaunchDetails();
     if (launch?.didNotificationLaunchApp ?? false) _open(launch!.notificationResponse?.payload);
   }

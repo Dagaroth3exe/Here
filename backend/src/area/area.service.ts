@@ -19,6 +19,8 @@ export const AREA_MIN_PEOPLE = 2;
 const SEVERAL_FROM = 4;
 /** At most one notice per person per area per day. */
 const NOTICE_EVERY_S = 24 * 60 * 60;
+/** A heat map only makes sense for a neighbourhood-to-city view (~0.3° ≈ 33 km). */
+const MAX_HEATMAP_SPAN = 0.3;
 /** Summaries are cached briefly — locations stream in far more often than alerts change. */
 const CACHE_MS = 5 * 60 * 1000;
 
@@ -88,6 +90,44 @@ export class AreaService {
     };
     this.cache.set(key, { at: Date.now(), summary });
     return summary;
+  }
+
+  /**
+   * Cells of the grid inside a map box where at least [AREA_MIN_PEOPLE]
+   * different people raised a genuine alert in the window — for the SOS
+   * tab's heat map. Same privacy rules as [summary]: no individual alert,
+   * nothing from the last hour. Empty when the box is too big to be local
+   * (zoomed out to a whole region).
+   */
+  async heatmap(box: { south: number; west: number; north: number; east: number }): Promise<{
+    cells: { south: number; west: number; north: number; east: number; level: AreaLevel; people: number }[];
+    tooWide: boolean;
+  }> {
+    if (box.north - box.south > MAX_HEATMAP_SPAN || box.east - box.west > MAX_HEATMAP_SPAN) {
+      return { cells: [], tooWide: true };
+    }
+    const rows = (await this.emergencies.query(
+      `SELECT floor(lat / $1)::int AS row, floor(lng / $1)::int AS col, count(DISTINCT user_id)::int AS people
+       FROM emergencies
+       WHERE false_alarm_at IS NULL
+         AND created_at > now() - make_interval(days => $6)
+         AND created_at < now() - make_interval(secs => $7)
+         AND lat BETWEEN $2 AND $3 AND lng BETWEEN $4 AND $5
+       GROUP BY 1, 2
+       HAVING count(DISTINCT user_id) >= $8`,
+      [CELL_DEG, box.south, box.north, box.west, box.east, AREA_WINDOW_DAYS, PRIVACY_DELAY_MS / 1000, AREA_MIN_PEOPLE],
+    )) as { row: number; col: number; people: number }[];
+    return {
+      tooWide: false,
+      cells: rows.map((r) => ({
+        south: r.row * CELL_DEG,
+        west: r.col * CELL_DEG,
+        north: (r.row + 1) * CELL_DEG,
+        east: (r.col + 1) * CELL_DEG,
+        level: r.people >= SEVERAL_FROM ? 'several' : 'some',
+        people: r.people,
+      })),
+    };
   }
 
   /**

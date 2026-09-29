@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:maplibre_gl/maplibre_gl.dart';
 
 import '../l10n/strings.dart';
 import 'area_api.dart';
@@ -28,11 +30,35 @@ class AreaSafety {
   final ValueNotifier<bool?> notices = ValueNotifier(null);
 
   StreamSubscription<AreaSummary>? _sub;
+  bool _following = false;
+
+  /// Where [current] and [district] were last loaded for.
+  LatLng? _loadedAt;
+
+  /// How far you move before the figures are reloaded.
+  static const _reloadAfterMeters = 500.0;
 
   void start() {
     _sub ??= RealtimeService.instance.areaNoticeStream.listen(_onNotice);
+    if (!_following) {
+      // The first fix can arrive after start-up (a cold GPS), and you move:
+      // load for wherever you are once there's somewhere to load for.
+      LocationService.fixes.addListener(_onFix);
+      _following = true;
+    }
     refresh();
     _loadNotices();
+  }
+
+  void _onFix() {
+    final fix = LocationService.fixes.value;
+    if (fix == null) return;
+    final last = _loadedAt;
+    if (last != null &&
+        Geolocator.distanceBetween(last.latitude, last.longitude, fix.latitude, fix.longitude) < _reloadAfterMeters) {
+      return;
+    }
+    refresh();
   }
 
   Future<void> refresh() async {
@@ -43,6 +69,7 @@ class AreaSafety {
     if (fix == null) return; // never summarise the fallback location
     try {
       current.value = await AreaApi.summary(token, fix.latitude, fix.longitude);
+      _loadedAt = fix;
     } catch (_) {
       // Keep what's shown; it's informational.
     }
@@ -81,6 +108,7 @@ class AreaSafety {
   }
 
   void reset() {
+    _loadedAt = null;
     current.value = null;
     district.value = null;
     notices.value = null;

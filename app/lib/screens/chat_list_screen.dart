@@ -15,6 +15,7 @@ import '../utils/initials.dart';
 import '../widgets/empty_state.dart';
 import 'chat_thread_screen.dart';
 import 'new_chat_screen.dart';
+import '../widgets/app_tab_bar.dart' show floatingButtonClearance;
 
 /// The "Chats" tab: a real, persisted list of 1:1 conversations, updated
 /// live over the same WebSocket connection used for presence/pings.
@@ -235,7 +236,7 @@ class _ConversationList extends StatelessWidget {
           child: _ConversationRow(conversation: c, onTap: () => onOpen(c)),
         );
     return ListView(
-      padding: const EdgeInsets.fromLTRB(22, 4, 22, 20),
+      padding: const EdgeInsets.fromLTRB(22, 4, 22, floatingButtonClearance),
       children: [
         if (requests.isNotEmpty) ...[
           header(t('Requests ({count})', {'count': requests.length})),

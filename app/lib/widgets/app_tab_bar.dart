@@ -3,9 +3,16 @@ import 'package:flutter/material.dart';
 import '../design/colors.dart';
 import '../design/typography.dart';
 import '../l10n/strings.dart';
+import '../screens/emergency_alert_screen.dart' show emergencyRed;
 import '../services/chat_notifications.dart';
 
-enum AppTab { home, discover, askHere, chats }
+/// Ask HERE isn't a tab: it opens from the floating button above the bar
+/// (see [HereShell]).
+enum AppTab { home, discover, chats, sos }
+
+/// Room to leave at the end of a tab's scrolling content so its last row can
+/// scroll clear of the floating Ask HERE button (56 px, 12 px above the bar).
+const floatingButtonClearance = 84.0;
 
 class AppTabBar extends StatelessWidget {
   const AppTabBar({super.key, required this.current, required this.onSelect});
@@ -13,17 +20,12 @@ class AppTabBar extends StatelessWidget {
   final AppTab current;
   final ValueChanged<AppTab> onSelect;
 
-  static const _labels = {
-    AppTab.home: 'Home',
-    AppTab.discover: 'Discover',
-    AppTab.askHere: 'Ask HERE',
-    AppTab.chats: 'Chats',
-  };
+  static const _labels = {AppTab.home: 'Home', AppTab.discover: 'Discover', AppTab.sos: 'Safety', AppTab.chats: 'Chats'};
 
   static const _icons = {
     AppTab.home: Icons.home_rounded,
     AppTab.discover: Icons.explore_outlined,
-    AppTab.askHere: Icons.add_comment_outlined,
+    AppTab.sos: Icons.sos_outlined,
     AppTab.chats: Icons.chat_bubble_outline_rounded,
   };
 
@@ -77,7 +79,8 @@ class AppTabBar extends StatelessWidget {
                               heightFactor: 1,
                               child: DecoratedBox(
                                 decoration: BoxDecoration(
-                                  color: colors.greenTint,
+                                  // Safety stays red even when selected.
+                                  color: current == AppTab.sos ? emergencyRed.withValues(alpha: 0.16) : colors.greenTint,
                                   borderRadius: BorderRadius.circular(999),
                                 ),
                               ),
@@ -92,6 +95,7 @@ class AppTabBar extends StatelessWidget {
                                   icon: _icons[tab]!,
                                   label: t(_labels[tab]!),
                                   active: tab == current,
+                                  tint: tab == AppTab.sos ? emergencyRed : null,
                                   showBadge: tab == AppTab.chats && unreadCount > 0,
                                   onTap: () => onSelect(tab),
                                 ),
@@ -118,6 +122,7 @@ class _TabItem extends StatelessWidget {
     required this.active,
     required this.onTap,
     this.showBadge = false,
+    this.tint,
   });
 
   final String label;
@@ -126,10 +131,13 @@ class _TabItem extends StatelessWidget {
   final bool showBadge;
   final VoidCallback onTap;
 
+  /// A fixed colour for this tab, selected or not (Safety is always red).
+  final Color? tint;
+
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final color = active ? colors.greenInk : colors.ink70;
+    final color = tint ?? (active ? colors.greenInk : colors.ink70);
     return Semantics(
       selected: active,
       button: true,

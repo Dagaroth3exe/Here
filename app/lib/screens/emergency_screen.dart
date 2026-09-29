@@ -23,7 +23,12 @@ String emergencyReasonLabel(EmergencyReason reason) => switch (reason) {
 /// pocket tap can't set off a whole neighbourhood; once it's out, this shows
 /// who was alerted and how to end it.
 class EmergencyScreen extends StatefulWidget {
-  const EmergencyScreen({super.key});
+  const EmergencyScreen({super.key, this.embedded = false});
+
+  /// Shown as a card inside another screen (the SOS tab) rather than as its
+  /// own page — same features, it just doesn't close itself when you end
+  /// the alert. Give it a bounded height (it fills it, never scrolls).
+  final bool embedded;
 
   @override
   State<EmergencyScreen> createState() => _EmergencyScreenState();
@@ -94,7 +99,15 @@ class _EmergencyScreenState extends State<EmergencyScreen> with SingleTickerProv
     setState(() => _ending = true);
     try {
       await center.resolve(falseAlarm: falseAlarm);
-      if (mounted) Navigator.of(context).pop();
+      if (!mounted) return;
+      if (widget.embedded) {
+        setState(() {
+          _ending = false;
+          _confirmFalse = false;
+        });
+      } else {
+        Navigator.of(context).pop();
+      }
     } catch (_) {
       if (mounted) {
         setState(() {
@@ -116,6 +129,33 @@ class _EmergencyScreenState extends State<EmergencyScreen> with SingleTickerProv
   }
 
   Widget _scaffold(EmergencyAlert? active) {
+    if (widget.embedded) {
+      return AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
+        decoration: BoxDecoration(
+          color: active != null ? emergencyRed : const Color(0xFF1B1113),
+          borderRadius: BorderRadius.circular(24),
+        ),
+        // Fills the space it's given without scrolling: centred when there's
+        // room, scaled down to fit when there isn't (small screens, big text).
+        child: LayoutBuilder(
+          builder: (context, box) => Center(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: SizedBox(
+                width: box.maxWidth,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: active != null ? _activeView(active) : _simpleComposeView(),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     return Builder(
       builder: (context) => Scaffold(
         backgroundColor: active != null ? emergencyRed : const Color(0xFF1B1113),
@@ -228,6 +268,139 @@ class _EmergencyScreenState extends State<EmergencyScreen> with SingleTickerProv
     ];
   }
 
+  /// The SOS tab's version: just the button and the call, with the reason
+  /// and message a tap away ("Add details") rather than in the way.
+  List<Widget> _simpleComposeView() {
+    final paused = center.standing.value?.paused ?? false;
+    final details = [
+      if (_reason != null) emergencyReasonLabel(_reason!),
+      if (_message.text.trim().isNotEmpty) t('note added'),
+    ];
+    return [
+      if (paused)
+        _PausedNotice(until: center.standing.value!.pausedUntil!)
+      else ...[
+        const SizedBox(height: 4),
+        Center(
+          child: _HoldButton(
+            progress: _hold,
+            sending: _sending,
+            onHoldStart: _startHold,
+            onHoldEnd: _cancelHold,
+            onActivate: _send,
+          ),
+        ),
+        const SizedBox(height: 14),
+        Text(
+          _sending ? t('Sending alert…') : t('Hold for 2 seconds to alert everyone nearby'),
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontFamily: 'Outfit', fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white),
+        ),
+        const SizedBox(height: 2),
+        Center(
+          child: TextButton.icon(
+            onPressed: _sending ? null : _editDetails,
+            style: TextButton.styleFrom(foregroundColor: Colors.white70),
+            icon: Icon(details.isEmpty ? Icons.add_rounded : Icons.edit_rounded, size: 18),
+            label: Text(
+              details.isEmpty ? t('Add details (optional)') : details.join(' · '),
+              style: const TextStyle(fontFamily: 'Outfit', fontSize: 14),
+            ),
+          ),
+        ),
+        ?_strikeWarning(),
+      ],
+      if (_error != null) ...[
+        const SizedBox(height: 6),
+        Semantics(
+          liveRegion: true,
+          child: Text(
+            _error!,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontFamily: 'Outfit', color: Color(0xFFFF8A80), fontSize: 14),
+          ),
+        ),
+      ],
+      const SizedBox(height: 14),
+      _CallButton(onTap: _call),
+    ];
+  }
+
+  /// What's happening and a note, in a sheet so the tab stays simple.
+  Future<void> _editDetails() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1B1113),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheet) => Padding(
+          padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + MediaQuery.viewInsetsOf(sheetContext).bottom),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                t('What’s happening? (optional)'),
+                style: const TextStyle(fontFamily: 'Outfit', fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                t('Sent with your alert, so people know what to expect.'),
+                style: const TextStyle(fontFamily: 'Outfit', fontSize: 13.5, color: Colors.white70),
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final reason in EmergencyReason.values)
+                    _ReasonPill(
+                      label: emergencyReasonLabel(reason),
+                      selected: _reason == reason,
+                      onTap: () {
+                        setState(() => _reason = _reason == reason ? null : reason);
+                        setSheet(() {});
+                      },
+                    ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: _message,
+                maxLength: 280,
+                minLines: 1,
+                maxLines: 3,
+                style: const TextStyle(fontFamily: 'Outfit', color: Colors.white),
+                cursorColor: Colors.white,
+                decoration: InputDecoration(
+                  hintText: t('Where are you, what do you need? (optional)'),
+                  hintStyle: const TextStyle(fontFamily: 'Outfit', color: Colors.white38),
+                  counterStyle: const TextStyle(color: Colors.white38),
+                  filled: true,
+                  fillColor: Colors.white.withValues(alpha: 0.06),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 6),
+              FilledButton(
+                onPressed: () => Navigator.of(sheetContext).pop(),
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: const Color(0xFF1B1113),
+                  minimumSize: const Size.fromHeight(50),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                child: Text(t('Done'), style: const TextStyle(fontFamily: 'Outfit', fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (mounted) setState(() {}); // the details summary under the button
+  }
+
   /// One false alarm away from a pause: say so before they send.
   Widget? _strikeWarning() {
     final standing = center.standing.value;
@@ -326,12 +499,14 @@ class _EmergencyScreenState extends State<EmergencyScreen> with SingleTickerProv
           style: const TextStyle(fontFamily: 'Outfit', color: white),
         ),
       ],
-      const SizedBox(height: 16),
-      Text(
-        t('You can leave this screen — the alert stays on until you end it here.'),
-        textAlign: TextAlign.center,
-        style: const TextStyle(fontFamily: 'Outfit', fontSize: 12.5, color: Colors.white70),
-      ),
+      if (!widget.embedded) ...[
+        const SizedBox(height: 16),
+        Text(
+          t('You can leave this screen — the alert stays on until you end it here.'),
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontFamily: 'Outfit', fontSize: 12.5, color: Colors.white70),
+        ),
+      ],
     ];
   }
 }
