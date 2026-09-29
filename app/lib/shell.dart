@@ -159,7 +159,7 @@ class _AskButton extends StatelessWidget {
           child: SizedBox(
             width: 58,
             height: 58,
-            child: Icon(Icons.live_help_rounded, color: colors.greenInkDeep, size: 28),
+            child: Icon(Icons.auto_awesome_rounded, color: colors.greenInkDeep, size: 26),
           ),
         ),
       ),
