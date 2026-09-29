@@ -537,9 +537,12 @@ void showAreaSheet(BuildContext context) {
 
 /// Always-red emergency button — kept out of the Reachable greying (a fixed
 /// color, not a theme one), since it must be findable in the worst moment.
-/// Pulses while your own alert is running.
+/// A white ring shows while your own alert is running. Same 46 px circle as
+/// the avatar beside it.
 class _SosButton extends StatelessWidget {
   const _SosButton();
+
+  static const _size = 46.0;
 
   @override
   Widget build(BuildContext context) {
@@ -551,39 +554,15 @@ class _SosButton extends StatelessWidget {
         excludeSemantics: true,
         child: Material(
           color: emergencyRed,
-          shape: const StadiumBorder(),
+          shape: CircleBorder(
+            side: active != null ? const BorderSide(color: Colors.white, width: 2.5) : BorderSide.none,
+          ),
+          clipBehavior: Clip.antiAlias,
           child: InkWell(
-            customBorder: const StadiumBorder(),
             onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const EmergencyScreen())),
-            child: Container(
-              height: 46,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              alignment: Alignment.center,
-              decoration: active != null
-                  ? BoxDecoration(
-                      shape: BoxShape.rectangle,
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: Colors.white, width: 2),
-                    )
-                  : null,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.sos_rounded, color: Colors.white, size: 20),
-                  if (active != null) ...[
-                    const SizedBox(width: 6),
-                    Text(
-                      t('ON'),
-                      style: const TextStyle(
-                        fontFamily: 'Outfit',
-                        fontWeight: FontWeight.w800,
-                        fontSize: 13,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
+            child: const SizedBox.square(
+              dimension: _size,
+              child: Icon(Icons.sos_rounded, color: Colors.white, size: 24),
             ),
           ),
         ),
