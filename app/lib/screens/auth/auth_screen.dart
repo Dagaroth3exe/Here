@@ -59,23 +59,13 @@ class _AuthScreenState extends State<AuthScreen> {
                   Center(
                     child: Column(
                       children: [
-                        Container(
-                          width: 104,
-                          height: 104,
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: colors.greenTint,
-                            borderRadius: BorderRadius.circular(32),
-                            border: Border.all(
-                              color: colors.reachableStatBorder,
-                            ),
-                          ),
-                          child: Image.asset(
-                            'assets/mascot/mascot_idle.png',
-                            filterQuality: FilterQuality.none,
-                            // The file is 1254 px; it's shown at 76.
-                            cacheWidth: (76 * MediaQuery.devicePixelRatioOf(context)).round(),
-                          ),
+                        Image.asset(
+                          'assets/mascot/mascot_idle.png',
+                          width: 96,
+                          height: 96,
+                          filterQuality: FilterQuality.none,
+                          // The file is 1254 px; it's shown at 96.
+                          cacheWidth: (96 * MediaQuery.devicePixelRatioOf(context)).round(),
                         ),
                         const SizedBox(height: 20),
                         Hero(
