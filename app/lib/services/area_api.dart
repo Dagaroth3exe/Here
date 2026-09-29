@@ -22,56 +22,90 @@ class AreaSummary {
   );
 }
 
-/// Official reported-crime figures (NCRB, Crime in India) for the district a
-/// place is in. Only for districts the server could match to NCRB's police
-/// units with confidence.
-class DistrictCrime {
-  const DistrictCrime({
-    required this.district,
-    required this.state,
+/// One set of official NCRB figures, with the year before when there is one.
+class CrimeFigures {
+  const CrimeFigures({
     required this.year,
     required this.total,
     required this.previousYear,
-    required this.previousTotal,
     required this.changePercent,
-    required this.top,
     required this.sourceTitle,
     required this.sourceUrl,
+  });
+
+  final int year;
+  final int total;
+  final int? previousYear;
+  final double? changePercent;
+  final String sourceTitle;
+  final String sourceUrl;
+
+  static CrimeFigures _fromJson(Map<String, dynamic> json) {
+    final previous = json['previous'] as Map<String, dynamic>?;
+    final source = json['source'] as Map<String, dynamic>;
+    return CrimeFigures(
+      year: json['year'] as int,
+      total: json['total'] as int,
+      previousYear: previous?['year'] as int?,
+      changePercent: (json['changePercent'] as num?)?.toDouble(),
+      sourceTitle: source['title'] as String,
+      sourceUrl: source['url'] as String,
+    );
+  }
+}
+
+/// Official reported-crime figures (NCRB, Crime in India) around a place:
+/// its district's (district tables stop at 2022) and, if the district is part
+/// of one of NCRB's metropolitan cities, that city's (newest edition).
+class AreaCrime {
+  const AreaCrime({
+    required this.district,
+    required this.state,
+    required this.districtFigures,
+    required this.top,
+    required this.city,
+    required this.cityFigures,
+    required this.ratePerLakh,
     required this.boundaries,
   });
 
   final String district;
   final String state;
-  final int year;
-  final int total;
-  final int? previousYear;
-  final int? previousTotal;
-  final double? changePercent;
+  final CrimeFigures? districtFigures;
 
-  /// Crime head key (theft, kidnapping, …) and count, largest first.
+  /// The district's most reported crime heads (theft, kidnapping, …), largest first.
   final List<(String, int)> top;
-  final String sourceTitle;
-  final String sourceUrl;
+  final String? city;
+  final CrimeFigures? cityFigures;
+
+  /// The city's crimes per lakh people, as NCRB published it.
+  final double? ratePerLakh;
 
   /// Attribution for the district boundaries.
   final String boundaries;
 
-  factory DistrictCrime.fromJson(Map<String, dynamic> json) {
-    final previous = json['previous'] as Map<String, dynamic>?;
-    final source = json['source'] as Map<String, dynamic>;
-    return DistrictCrime(
+  /// The newest of the two — what the Home chip shows.
+  CrimeFigures? get newest {
+    final c = cityFigures, d = districtFigures;
+    if (c == null) return d;
+    if (d == null) return c;
+    return c.year >= d.year ? c : d;
+  }
+
+  factory AreaCrime.fromJson(Map<String, dynamic> json) {
+    final district = json['districtFigures'] as Map<String, dynamic>?;
+    final city = json['cityFigures'] as Map<String, dynamic>?;
+    return AreaCrime(
       district: json['district'] as String,
       state: json['state'] as String,
-      year: json['year'] as int,
-      total: json['total'] as int,
-      previousYear: previous?['year'] as int?,
-      previousTotal: previous?['total'] as int?,
-      changePercent: (json['changePercent'] as num?)?.toDouble(),
+      districtFigures: district == null ? null : CrimeFigures._fromJson(district),
       top: [
-        for (final t in (json['top'] as List).cast<Map<String, dynamic>>()) (t['head'] as String, t['count'] as int),
+        for (final t in ((district?['top'] as List?) ?? const []).cast<Map<String, dynamic>>())
+          (t['head'] as String, t['count'] as int),
       ],
-      sourceTitle: source['title'] as String,
-      sourceUrl: source['url'] as String,
+      city: city?['city'] as String?,
+      cityFigures: city == null ? null : CrimeFigures._fromJson(city),
+      ratePerLakh: (city?['ratePerLakh'] as num?)?.toDouble(),
       boundaries: json['boundaries'] as String,
     );
   }
@@ -86,10 +120,10 @@ class AreaApi {
   static Future<AreaSummary> summary(String token, double lat, double lng) async =>
       AreaSummary.fromJson(await _request('GET', '/area/summary?lat=$lat&lng=$lng', token) as Map<String, dynamic>);
 
-  /// Null when the place isn't in a district with official figures.
-  static Future<DistrictCrime?> districtCrime(String token, double lat, double lng) async {
+  /// Null when there are no official figures for where this place is.
+  static Future<AreaCrime?> areaCrime(String token, double lat, double lng) async {
     final json = await _request('GET', '/crime/district?lat=$lat&lng=$lng', token);
-    return json == null ? null : DistrictCrime.fromJson(json as Map<String, dynamic>);
+    return json == null ? null : AreaCrime.fromJson(json as Map<String, dynamic>);
   }
 
   static Future<bool> notices(String token) async =>

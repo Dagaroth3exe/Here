@@ -44,6 +44,7 @@ const NON_GEOGRAPHIC =
  */
 const RENAMED: Record<string, Record<string, string>> = {
   haryana: { gurgaon: 'gurugram', mewat: 'nuh' },
+  gujarat: { ahmadabad: 'ahmedabad' },
   karnataka: {
     bangalore: 'bengaluru',
     bangalorerural: 'bengalururural',
@@ -156,4 +157,27 @@ export function matchUnits(districts: string[], units: string[], state = ''): Ma
     if (hit) place(hit, unit);
   }
   return result;
+}
+
+/**
+ * Which map districts an NCRB metropolitan city lies in: the district that
+ * shares its name (renames included), districts starting with it ("Mumbai"
+ * and "Mumbai Suburban"), or — for a city that is its own state, like
+ * Delhi — every district of that state.
+ */
+/** Cities whose district is named differently (Kochi lies in Ernakulam). */
+const CITY_DISTRICT: Record<string, Record<string, string>> = {
+  kerala: { kochi: 'ernakulam' },
+};
+
+export function districtsForCity(city: string, state: string, districts: string[]): string[] {
+  const name = CITY_DISTRICT[normalizeState(state)]?.[core(city)] ?? core(city);
+  if (name === normalizeState(state)) return [...districts];
+  return districts.filter((d) => {
+    const key = districtKey(d, state);
+    // "Bangalore Rural" / "Kanpur Dehat" are districts of their own outside
+    // the city police's area; "Mumbai Suburban" is inside it.
+    if (/(rural|dehat|grameen|gramin)$/.test(key)) return false;
+    return key === name || key.startsWith(name) || jaroWinkler(key, name) >= 0.95;
+  });
 }

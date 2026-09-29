@@ -161,16 +161,36 @@ class EmergencyCenter {
     final cached = LocationService.cached;
     final fix = cached ?? await LocationService.locate();
     if (fix == null) throw const LocationUnavailable();
-    final alert = await EmergencyApi.raise(
-      token,
-      lat: fix.latitude,
-      lng: fix.longitude,
-      reason: reason,
-      message: message,
-    );
+    EmergencyAlert alert;
+    try {
+      alert = await EmergencyApi.raise(token, lat: fix.latitude, lng: fix.longitude, reason: reason, message: message);
+    } on EmergencyUnreachable {
+      // No answer isn't "not sent": on a slow connection the alarm can reach
+      // the server and go out while the reply is lost. Telling someone in
+      // danger it failed when people are already on their way (and leaving
+      // them no way to end it) would be worse than a short wait — so ask.
+      final sent = await _confirmSent(token);
+      if (sent == null) rethrow;
+      alert = sent;
+    }
     _setMine(alert);
     if (cached != null) _sendPreciseLocation();
     return alert;
+  }
+
+  /// Whether an alarm we didn't hear back about did go out — a few tries,
+  /// since the connection that lost the reply may still be struggling.
+  Future<EmergencyAlert?> _confirmSent(String token) async {
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await EmergencyApi.mine(token);
+      } on EmergencyUnreachable {
+        await Future<void>.delayed(const Duration(seconds: 2));
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
   }
 
   /// "I'm safe now" (or, with [falseAlarm], "it wasn't real"): closes the

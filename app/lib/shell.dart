@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'design/colors.dart';
 import 'screens/ask_screen.dart';
 import 'screens/chat_list_screen.dart';
@@ -24,11 +25,11 @@ class _HereShellState extends State<HereShell> {
   final _chatListKey = GlobalKey<ChatListScreenState>();
 
   Map<AppTab, Widget> get _screens => {
-        AppTab.home: const HomeScreen(),
-        AppTab.discover: const DiscoverScreen(),
-        AppTab.askHere: const AskScreen(),
-        AppTab.chats: ChatListScreen(key: _chatListKey),
-      };
+    AppTab.home: const HomeScreen(),
+    AppTab.discover: const DiscoverScreen(),
+    AppTab.askHere: const AskScreen(),
+    AppTab.chats: ChatListScreen(key: _chatListKey),
+  };
 
   @override
   void initState() {
@@ -71,9 +72,10 @@ class _HereShellState extends State<HereShell> {
           ],
         ),
       ),
-      bottomNavigationBar: AppTabBar(
-        current: _current,
-        onSelect: _selectTab,
+      // Its own layer: the pill and its soft shadow are painted once, not on
+      // every frame something above it animates.
+      bottomNavigationBar: RepaintBoundary(
+        child: AppTabBar(current: _current, onSelect: _selectTab),
       ),
     );
   }

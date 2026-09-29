@@ -21,8 +21,8 @@ class AreaSafety {
   /// Around your current location; null until known.
   final ValueNotifier<AreaSummary?> current = ValueNotifier(null);
 
-  /// Official NCRB figures for the district you're in (null if none).
-  final ValueNotifier<DistrictCrime?> district = ValueNotifier(null);
+  /// Official NCRB figures for where you are — district and/or city (null if none).
+  final ValueNotifier<AreaCrime?> district = ValueNotifier(null);
 
   /// Whether heads-ups are on (null until loaded).
   final ValueNotifier<bool?> notices = ValueNotifier(null);
@@ -47,7 +47,7 @@ class AreaSafety {
       // Keep what's shown; it's informational.
     }
     try {
-      district.value = await AreaApi.districtCrime(token, fix.latitude, fix.longitude);
+      district.value = await AreaApi.areaCrime(token, fix.latitude, fix.longitude);
     } catch (_) {}
   }
 

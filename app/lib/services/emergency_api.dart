@@ -78,6 +78,12 @@ class SosStanding {
   );
 }
 
+/// The request never got an answer (offline, or a timeout) — so it may or
+/// may not have reached the server, unlike a refusal, which did.
+class EmergencyUnreachable extends AuthApiException {
+  EmergencyUnreachable() : super("Couldn't reach the server. Check your connection and try again.");
+}
+
 /// Talks to the backend's `/emergency` endpoints. Plain HTTP, so raising the
 /// alarm works whether or not you're Reachable.
 class EmergencyApi {
@@ -130,7 +136,7 @@ class EmergencyApi {
       if (body != null) request.body = jsonEncode(body);
       response = await http.Response.fromStream(await request.send().timeout(const Duration(seconds: 10)));
     } catch (_) {
-      throw AuthApiException("Couldn't reach the server. Check your connection and try again.");
+      throw EmergencyUnreachable();
     }
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return response.body.isEmpty ? null : jsonDecode(response.body);

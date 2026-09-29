@@ -294,15 +294,24 @@ class _MapCanvasState extends State<MapCanvas> with SingleTickerProviderStateMix
     if (realtime.isConnected) realtime.sendLocation(fix.latitude, fix.longitude);
   }
 
-  /// The pulse means "you're broadcasting" — so it's still while you're not
-  /// Reachable, and for anyone who asked the system for less motion.
+  /// Whether the pulse has played since the map appeared / you went Reachable.
+  bool _pulsed = false;
+
+  /// The pulse means "you're broadcasting". It plays a few times when the map
+  /// appears or you go Reachable, then settles into a still halo: an endless
+  /// animation over the native map view would redraw the screen every frame
+  /// for as long as Home is open. Still for anyone who asked for less motion.
   void _applyMotionPreference() {
     final reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     if (reduceMotion || !widget.locationEnabled) {
-      _controller.value = 0;
       _controller.stop();
-    } else if (!_controller.isAnimating) {
-      _controller.repeat();
+      _controller.value = 0;
+      _pulsed = !widget.locationEnabled ? false : _pulsed;
+    } else if (!_pulsed) {
+      _pulsed = true;
+      _controller.repeat(count: 3).whenComplete(() {
+        if (mounted) _controller.value = 0;
+      });
     }
   }
 

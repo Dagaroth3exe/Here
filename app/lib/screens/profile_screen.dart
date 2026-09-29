@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+
 import '../design/colors.dart';
 import '../design/typography.dart';
 import '../l10n/strings.dart';
 import '../services/auth_session.dart';
 import '../services/area_safety.dart';
+import '../services/emergency_api.dart';
 import '../services/emergency_center.dart';
 import '../services/push_notifications.dart';
 import '../services/avatar_controller.dart';
@@ -13,6 +15,9 @@ import '../utils/initials.dart';
 import '../widgets/avatar_thumb.dart';
 import 'auth/auth_screen.dart';
 import 'edit_profile_screen.dart';
+import 'emergency_alert_screen.dart';
+import 'emergency_screen.dart';
+import 'home_screen.dart';
 import 'settings_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -24,10 +29,7 @@ class ProfileScreen extends StatelessWidget {
     await PushNotifications.disable();
     await AuthSession.clear();
     if (!context.mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const AuthScreen()),
-      (route) => false,
-    );
+    Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const AuthScreen()), (route) => false);
   }
 
   @override
@@ -46,7 +48,7 @@ class ProfileScreen extends StatelessWidget {
       ),
       body: SafeArea(
         top: false,
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(22, 12, 22, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -113,18 +115,35 @@ class ProfileScreen extends StatelessWidget {
               const SizedBox(height: 36),
               _MenuRow(
                 label: t('Edit Profile'),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const EditProfileScreen()),
-                ),
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const EditProfileScreen())),
               ),
               const SizedBox(height: 12),
               _MenuRow(
                 label: t('Settings'),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
+              ),
+              const SizedBox(height: 12),
+              // Safety, last in the list.
+              ValueListenableBuilder<EmergencyAlert?>(
+                valueListenable: EmergencyCenter.instance.mine,
+                builder: (context, active, _) => _MenuRow(
+                  label: t('Emergency SOS'),
+                  subtitle: active != null ? t('Your alert is on') : t('Alert people nearby'),
+                  icon: Icons.sos_rounded,
+                  iconColor: emergencyRed,
+                  emphasized: active != null,
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const EmergencyScreen())),
                 ),
               ),
               const SizedBox(height: 12),
+              _MenuRow(
+                label: t('Alerts near you'),
+                subtitle: t('Recent alerts and official figures'),
+                icon: Icons.shield_outlined,
+                iconColor: colors.trust,
+                onTap: () => showAreaSheet(context),
+              ),
+              const SizedBox(height: 24),
               GestureDetector(
                 onTap: () => _signOut(context),
                 child: Container(
@@ -148,31 +167,66 @@ class ProfileScreen extends StatelessWidget {
 }
 
 class _MenuRow extends StatelessWidget {
-  const _MenuRow({required this.label, required this.onTap});
+  const _MenuRow({
+    required this.label,
+    required this.onTap,
+    this.subtitle,
+    this.icon,
+    this.iconColor,
+    this.emphasized = false,
+  });
 
   final String label;
+  final String? subtitle;
+  final IconData? icon;
+  final Color? iconColor;
+
+  /// Outlined in the icon's color — e.g. while your SOS alert is on.
+  final bool emphasized;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        height: 50,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(
-          color: colors.surface,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: colors.hairline),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(label, style: AppText.personName.copyWith(color: colors.ink)),
-            Icon(Icons.chevron_right, color: colors.ink38),
-          ],
+    return Semantics(
+      button: true,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(minHeight: 50),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: colors.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: emphasized ? (iconColor ?? colors.hairline) : colors.hairline,
+              width: emphasized ? 1.5 : 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              if (icon != null) ...[Icon(icon, color: iconColor ?? colors.ink70, size: 22), const SizedBox(width: 12)],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(label, style: AppText.personName.copyWith(color: colors.ink)),
+                    if (subtitle != null)
+                      Text(
+                        subtitle!,
+                        style: AppText.meta.copyWith(
+                          color: emphasized ? (iconColor ?? colors.ink50) : colors.ink50,
+                          fontWeight: emphasized ? FontWeight.w600 : null,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: colors.ink38),
+            ],
+          ),
         ),
       ),
     );

@@ -2,8 +2,10 @@ import { Injectable, Logger, type OnApplicationBootstrap, type OnModuleDestroy }
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { jaroWinkler, matchUnits, normalizeState } from './name-match.js';
+import { districtsForCity, jaroWinkler, matchUnits, normalizeState } from './name-match.js';
+import { parseCityTable } from './ncrb-cities.js';
 import { parseDistrictTable } from './ncrb-table.js';
+import { readFirstSheet } from './xlsx.js';
 
 /** data.gov.in's public catalogue search (the same one its website uses). */
 const CATALOGUE = 'https://www.data.gov.in/backend/dmspublic/v1/resources';
@@ -11,6 +13,13 @@ const CATALOGUE = 'https://www.data.gov.in/backend/dmspublic/v1/resources';
 const TABLE_TITLE = /^District-wise Number of (?:Indian Penal Code \(IPC\)|IPC|.*BNS.*) Crimes during\s*(\d{4})\s*$/i;
 /** geoBoundaries — open district boundaries (ODbL), from India's Local Government Directory. */
 const BOUNDARIES_API = 'https://www.geoboundaries.org/api/current/gbOpen/IND';
+/**
+ * OpenCity (public domain) republishes each "Crime in India" edition's tables
+ * as spreadsheets — NCRB's own site doesn't list them as files. From 2023 on,
+ * the newest figures come only down to metropolitan cities.
+ */
+const OPENCITY = 'https://data.opencity.in/api/3/action/package_show?id=crime-in-india-';
+const CITY_TABLE = /metropolitan cities\s*-\s*ipc\s*(?:and|&|\/)\s*bns crimes/i;
 const CHECK_EVERY_MS = 7 * 24 * 60 * 60 * 1000;
 const HEADERS = { 'User-Agent': 'HERE (open data importer)' };
 
@@ -48,16 +57,26 @@ export class CrimeDataService implements OnApplicationBootstrap, OnModuleDestroy
   async sync(): Promise<void> {
     if (this.running) return;
     this.running = true;
+    // Each step on its own: one source being down (data.gov.in times out
+    // now and then) mustn't stop the others.
+    const step = async (name: string, run: () => Promise<unknown>) => {
+      try {
+        await run();
+      } catch (error) {
+        this.logger.warn(`Crime data sync — ${name} failed: ${(error as Error).message}`);
+      }
+    };
     try {
-      await this.ensureSchema();
-      const [{ n }] = (await this.db.query('SELECT count(*)::int AS n FROM admin_districts')) as { n: number }[];
-      if (n === 0) await this.importBoundaries();
-      await this.importNewTables();
+      await step('schema', () => this.ensureSchema());
+      await step('boundaries', async () => {
+        const [{ n }] = (await this.db.query('SELECT count(*)::int AS n FROM admin_districts')) as { n: number }[];
+        if (n === 0) await this.importBoundaries();
+      });
+      await step('district tables (data.gov.in)', () => this.importNewTables());
+      await step('city tables (OpenCity)', () => this.importCityTables());
       // Cheap (a second or two), so every pass — matching improvements apply
       // to data already imported.
-      await this.rematch();
-    } catch (error) {
-      this.logger.warn(`Crime data sync failed: ${(error as Error).message}`);
+      await step('matching', () => this.rematch());
     } finally {
       this.running = false;
     }
@@ -93,6 +112,23 @@ export class CrimeDataService implements OnApplicationBootstrap, OnModuleDestroy
         PRIMARY KEY (dataset_id, state, unit)
       );
       CREATE INDEX IF NOT EXISTS crime_unit_stats_district ON crime_unit_stats (district_id);
+      CREATE TABLE IF NOT EXISTS crime_city_editions (
+        edition int PRIMARY KEY,
+        title text NOT NULL,
+        url text NOT NULL,
+        imported_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE TABLE IF NOT EXISTS crime_city_stats (
+        edition int NOT NULL REFERENCES crime_city_editions(edition) ON DELETE CASCADE,
+        city text NOT NULL,
+        state text NOT NULL,
+        year int NOT NULL,
+        total int NOT NULL,
+        rate real,
+        rate_year int,
+        district_ids int[] NOT NULL DEFAULT '{}',
+        PRIMARY KEY (edition, city, year)
+      );
     `);
   }
 
@@ -179,6 +215,51 @@ export class CrimeDataService implements OnApplicationBootstrap, OnModuleDestroy
     return imported;
   }
 
+  /**
+   * Newer "Crime in India" editions' metropolitan-city tables, from OpenCity.
+   * Looks for editions from this year back to 2023 (earlier ones have
+   * district tables instead); each is imported once.
+   */
+  private async importCityTables(): Promise<void> {
+    type Package = { success: boolean; result?: { title: string; resources: { name: string; url: string; format: string }[] } };
+    for (let edition = new Date().getFullYear(); edition >= 2023; edition--) {
+      const [done] = (await this.db.query('SELECT 1 FROM crime_city_editions WHERE edition = $1', [edition])) as unknown[];
+      if (done) continue;
+      let pkg: Package;
+      try {
+        pkg = await this.getJson<Package>(`${OPENCITY}${edition}`);
+      } catch {
+        continue; // not published (yet)
+      }
+      const table = pkg.result?.resources.find((r) => CITY_TABLE.test(r.name) && /xlsx/i.test(r.format));
+      if (!pkg.success || !table) continue;
+      try {
+        const response = await fetch(table.url, { headers: HEADERS, signal: AbortSignal.timeout(120_000) });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const cities = parseCityTable(readFirstSheet(new Uint8Array(await response.arrayBuffer())));
+        await this.db.transaction(async (tx) => {
+          await tx.query('INSERT INTO crime_city_editions (edition, title, url) VALUES ($1, $2, $3)', [
+            edition,
+            `${pkg.result!.title}: ${table.name}`,
+            table.url,
+          ]);
+          for (const c of cities) {
+            for (const [year, total] of Object.entries(c.totals)) {
+              await tx.query(
+                `INSERT INTO crime_city_stats (edition, city, state, year, total, rate, rate_year)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING`,
+                [edition, c.city, c.state ?? c.city, Number(year), total, Number(year) === c.rateYear ? c.rate : null, c.rateYear],
+              );
+            }
+          }
+        });
+        this.logger.log(`Imported NCRB ${edition} metropolitan cities (${cities.length} cities) from OpenCity`);
+      } catch (error) {
+        this.logger.warn(`Couldn't import NCRB ${edition} city table: ${(error as Error).message}`);
+      }
+    }
+  }
+
   /** Links every dataset's police units to map districts, state by state. */
   private async rematch(): Promise<void> {
     const districts = (await this.db.query('SELECT id, name, state FROM admin_districts WHERE state IS NOT NULL')) as {
@@ -192,6 +273,27 @@ export class CrimeDataService implements OnApplicationBootstrap, OnModuleDestroy
       byState.set(key, [...(byState.get(key) ?? []), d]);
     }
     const stateKeys = [...byState.keys()];
+    const districtsIn = (state: string) => {
+      const norm = normalizeState(state);
+      const key = byState.has(norm) ? norm : stateKeys.find((k) => jaroWinkler(k, norm) >= 0.93);
+      return key ? byState.get(key)! : [];
+    };
+
+    const cities = (await this.db.query('SELECT DISTINCT edition, city, state FROM crime_city_stats')) as {
+      edition: number;
+      city: string;
+      state: string;
+    }[];
+    for (const c of cities) {
+      const inState = districtsIn(c.state);
+      const names = new Set(districtsForCity(c.city, c.state, inState.map((d) => d.name)));
+      const ids = inState.filter((d) => names.has(d.name)).map((d) => d.id);
+      await this.db.query('UPDATE crime_city_stats SET district_ids = $1 WHERE edition = $2 AND city = $3', [
+        ids,
+        c.edition,
+        c.city,
+      ]);
+    }
     const datasets = (await this.db.query('SELECT id, year FROM crime_datasets')) as { id: number; year: number }[];
 
     for (const { id, year } of datasets) {

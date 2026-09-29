@@ -1,5 +1,7 @@
 import 'dart:math';
+
 import 'package:flutter/material.dart';
+
 import '../design/colors.dart';
 import '../design/typography.dart';
 import '../services/auth_session.dart';
@@ -41,11 +43,20 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: _totalMs))
-      ..addStatusListener((status) {
-        if (status == AnimationStatus.completed) _onIntroFinished();
-      });
+    _controller =
+        AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: _totalMs),
+        )..addStatusListener((status) {
+          if (status == AnimationStatus.completed) _onIntroFinished();
+        });
   }
+
+  /// A mascot frame decoded at the most it's ever drawn (130 px, scaled up
+  /// to 1.2×) rather than the file's 1254 px — the same provider for the
+  /// precache and the widget, so the precached copy is the one used.
+  ImageProvider _frame(String asset) =>
+      ResizeImage(AssetImage(asset), width: (130 * 1.2 * MediaQuery.devicePixelRatioOf(context)).round());
 
   @override
   void didChangeDependencies() {
@@ -53,7 +64,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     if (!_precached) {
       _precached = true;
       for (final frame in _waveFrames.toSet()) {
-        precacheImage(AssetImage(frame), context);
+        precacheImage(_frame(frame), context);
       }
     }
     if (MediaQuery.of(context).disableAnimations) {
@@ -150,8 +161,8 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                         top: 90,
                         child: Transform.scale(
                           scale: mascotScale,
-                          child: Image.asset(
-                            _currentFrame,
+                          child: Image(
+                            image: _frame(_currentFrame),
                             width: 130,
                             height: 150,
                             fit: BoxFit.contain,
@@ -208,7 +219,10 @@ class _PixelBubble extends StatelessWidget {
               child: Container(
                 width: 12,
                 height: 12,
-                decoration: BoxDecoration(color: colors.surface, border: Border.all(color: colors.ink, width: 2)),
+                decoration: BoxDecoration(
+                  color: colors.surface,
+                  border: Border.all(color: colors.ink, width: 2),
+                ),
               ),
             ),
           ),

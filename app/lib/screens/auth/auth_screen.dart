@@ -74,6 +74,8 @@ class _AuthScreenState extends State<AuthScreen> {
                           child: Image.asset(
                             'assets/mascot/mascot_idle.png',
                             filterQuality: FilterQuality.none,
+                            // The file is 1254 px; it's shown at 76.
+                            cacheWidth: (76 * MediaQuery.devicePixelRatioOf(context)).round(),
                           ),
                         ),
                         const SizedBox(height: 20),
