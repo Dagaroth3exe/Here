@@ -368,6 +368,9 @@ const _translations = <String, Map<String, String>>{
     'Women helpline': 'महिला हेल्पलाइन',
     'Child helpline': 'चाइल्ड हेल्पलाइन',
     'Cyber crime': 'साइबर अपराध',
+    'Nearest helper': 'सबसे पास के मददगार',
+    '{distance} away': '{distance} दूर',
+    'under 100 m': '100 मीटर से कम',
   },
   'es': {
     'Someone HERE can help.': 'Alguien AQUÍ puede ayudarte.',
@@ -720,5 +723,8 @@ const _translations = <String, Map<String, String>>{
     'Women helpline': 'Línea de ayuda para mujeres',
     'Child helpline': 'Línea de ayuda infantil',
     'Cyber crime': 'Delitos cibernéticos',
+    'Nearest helper': 'Ayuda más cercana',
+    '{distance} away': 'a {distance}',
+    'under 100 m': 'menos de 100 m',
   },
 };

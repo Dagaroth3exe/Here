@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
+import 'package:maplibre_gl/maplibre_gl.dart' show LatLng;
 
 import '../data/reachability_categories.dart';
 import '../design/colors.dart';
@@ -19,7 +21,8 @@ import '../services/realtime_service.dart';
 import '../utils/initials.dart';
 import '../widgets/area_info.dart';
 import '../widgets/avatar_thumb.dart';
-import '../widgets/mini_map.dart';
+import '../widgets/person_card.dart';
+import '../widgets/ping_sheet.dart';
 import 'edit_reachability_screen.dart';
 import 'profile_screen.dart';
 import '../widgets/app_tab_bar.dart' show floatingButtonClearance;
@@ -42,6 +45,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   bool get _reachable => ReachabilityController.on.value;
   int _reachableCount = 0;
+  List<ReachablePerson> _people = RealtimeService.instance.people;
   StreamSubscription<List<ReachablePerson>>? _peopleSub;
   StreamSubscription<ChatMessage>? _requestSub;
   StreamSubscription<AskAnswerNotice>? _answerSub;
@@ -50,7 +54,10 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _peopleSub = RealtimeService.instance.peopleStream.listen((people) {
-      setState(() => _reachableCount = people.length);
+      setState(() {
+        _reachableCount = people.length;
+        _people = people;
+      });
     });
     // A new chat request (someone's first message) or an answer to your
     // Ask HERE question — worth interrupting for while the app is open.
@@ -137,19 +144,12 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
-            child: _PoweredDown(
-              off: !_reachable,
-              order: 2,
-              child: MiniMap(locationEnabled: _reachable),
-            ),
-          ),
+          _NearestHelper(people: _reachable ? _people : const []),
           Padding(
             padding: const EdgeInsets.fromLTRB(22, 26, 22, 0),
             child: _PoweredDown(
               off: !_reachable,
-              order: 3,
+              order: 2,
               child: ValueListenableBuilder<UserProfile?>(
                 valueListenable: ProfileController.current,
                 builder: (context, profile, _) {
@@ -164,7 +164,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(22, 24, 22, 0),
-            child: _PoweredDown(off: !_reachable, order: 4, child: const _ReputationCard()),
+            child: _PoweredDown(off: !_reachable, order: 3, child: const _ReputationCard()),
           ),
         ],
       ),
@@ -174,8 +174,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
 /// Fades [child] to a washed-out grey while [off] — the "power's off" look
 /// for the dashboard when you're not Reachable. It stays usable; it only
-/// looks dormant. The paper-colored scrim on top is what dims the mini map,
-/// since the native map view underneath ignores Flutter's color filters.
+/// looks dormant. The paper-colored scrim on top also dims anything drawn by
+/// a native view, which ignores Flutter's color filters.
 ///
 /// Powering down happens all at once. Powering up is staggered by [order]:
 /// each card waits its turn, then flickers on like the bulb does.
@@ -216,7 +216,7 @@ class _PoweredDownState extends State<_PoweredDown> with TickerProviderStateMixi
   bool _lighting = false;
   Timer? _wait;
 
-  /// Keeps [widget.child]'s state (the mini map's native view included)
+  /// Keeps [widget.child]'s state
   /// when it moves in and out of the filter below, instead of rebuilding it.
   final _childKey = GlobalKey();
 
@@ -286,8 +286,7 @@ class _PoweredDownState extends State<_PoweredDown> with TickerProviderStateMixi
       builder: (context, child) {
         final dim = _level.clamp(0.0, 1.0);
         // Fully lit (the usual state): no filter or scrim at all. Even an
-        // identity ColorFiltered costs an offscreen layer every frame, and
-        // over the mini map it'd re-composite the native view each tick.
+        // identity ColorFiltered costs an offscreen layer every frame.
         if (dim == 0) return child!;
         return Stack(
           // Pass the parent's constraints straight through, so a card in an
@@ -1000,5 +999,90 @@ class _Badge extends StatelessWidget {
       decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(6)),
       child: Text(text, style: AppText.reputationBadge.copyWith(color: color)),
     );
+  }
+}
+
+/// The one Reachable person closest to you right now, under the stats, with
+/// the same PING and chat buttons as on Discover. Slides in once there's
+/// someone (and a fix to measure from); gone when you're not Reachable.
+class _NearestHelper extends StatelessWidget {
+  const _NearestHelper({required this.people});
+
+  final List<ReachablePerson> people;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: Listenable.merge([LocationService.fixes, pingedPeople]),
+      builder: (context, _) {
+        final nearest = _nearest(LocationService.fixes.value ?? LocationService.cached);
+        return AnimatedSwitcher(
+          duration: const Duration(milliseconds: 350),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: (child, animation) => SizeTransition(
+            sizeFactor: animation,
+            alignment: Alignment.topCenter,
+            child: FadeTransition(
+              opacity: animation,
+              child: SlideTransition(
+                position: Tween(begin: const Offset(0, 0.15), end: Offset.zero).animate(animation),
+                child: child,
+              ),
+            ),
+          ),
+          child: nearest == null
+              ? const SizedBox(width: double.infinity, key: ValueKey('none'))
+              : Padding(
+                  key: ValueKey(nearest.person.id),
+                  padding: const EdgeInsets.fromLTRB(22, 18, 22, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+                        child: Text(
+                          t('Nearest helper').toUpperCase(),
+                          style: TextStyle(
+                            fontFamily: 'Outfit',
+                            fontWeight: FontWeight.w600,
+                            fontSize: 11,
+                            letterSpacing: 0.08 * 11,
+                            color: context.colors.ink45,
+                          ),
+                        ),
+                      ),
+                      PersonCard(
+                        person: nearest.person,
+                        pinged: pingedPeople.value.contains(nearest.person.id),
+                        selected: false,
+                        onTap: () {},
+                        onPing: () => pingPerson(context, nearest.person),
+                        subtitle: t('{distance} away', {'distance': _distance(nearest.meters)}),
+                      ),
+                    ],
+                  ),
+                ),
+        );
+      },
+    );
+  }
+
+  ({ReachablePerson person, double meters})? _nearest(LatLng? me) {
+    if (me == null) return null;
+    ({ReachablePerson person, double meters})? best;
+    for (final person in people) {
+      if (!person.hasLocation || person.id == AuthSession.userId) continue;
+      final meters = Geolocator.distanceBetween(me.latitude, me.longitude, person.lat!, person.lng!);
+      if (best == null || meters < best.meters) best = (person: person, meters: meters);
+    }
+    return best;
+  }
+
+  /// Positions are rounded to ~110 m on the server, so this stays rough.
+  static String _distance(double meters) {
+    if (meters < 100) return t('under 100 m');
+    if (meters < 1000) return '~${(meters / 50).round() * 50} m';
+    return '~${(meters / 1000).toStringAsFixed(1)} km';
   }
 }

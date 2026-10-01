@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
@@ -13,6 +15,12 @@ class LocationService {
 
   static LatLng? _cached;
   static Future<LatLng?>? _pending;
+
+  /// Keeps asking until there's a first fix: right after a phone (or
+  /// emulator) boots, GPS can take longer than one request's timeout, and
+  /// without a retry the app would never learn where it is.
+  static Timer? _retry;
+  static int _retries = 0;
 
   /// The last successfully resolved fix, if any — read synchronously so a
   /// map that was told to stop actively locating can still show the last
@@ -36,8 +44,28 @@ class LocationService {
 
   /// Concurrent callers (Home sharing your location, each mounted map)
   /// share one in-flight request, so the permission prompt shows once.
+  ///
+  /// Until there's a first fix it asks for GPS (high accuracy): "medium" is
+  /// served from Wi-Fi/cell positioning, which a phone may not have (indoors
+  /// with no network location, or an emulator), and would then never answer.
   static Future<LatLng?> _fetch({LocationAccuracy accuracy = LocationAccuracy.medium}) =>
-      _pending ??= _request(accuracy).whenComplete(() => _pending = null);
+      _pending ??= _request(_cached == null ? LocationAccuracy.high : accuracy)
+          .whenComplete(() => _pending = null)
+          .then((fix) {
+            if (fix == null && _cached == null) _retryLater();
+            return fix;
+          });
+
+  /// 10 s, 20 s, 40 s, then every minute, until the first fix arrives
+  /// (announced on [fixes]). Nothing to do once one has.
+  static void _retryLater() {
+    if (_retry?.isActive ?? false) return;
+    final wait = Duration(seconds: [10, 20, 40, 60][_retries.clamp(0, 3)]);
+    _retries++;
+    _retry = Timer(wait, () {
+      if (_cached == null) _fetch();
+    });
+  }
 
   static Future<LatLng?> _request(LocationAccuracy accuracy) async {
     try {
@@ -53,9 +81,8 @@ class LocationService {
 
       Position? position;
       try {
-        position = await Geolocator.getCurrentPosition(
-          locationSettings: LocationSettings(accuracy: accuracy),
-        ).timeout(const Duration(seconds: 8));
+        position = await Geolocator.getCurrentPosition(locationSettings: LocationSettings(accuracy: accuracy))
+            .timeout(const Duration(seconds: 8));
       } catch (_) {
         // No fresh fix in time (indoors, cold GPS) — the OS's last known
         // position is still the device's real whereabouts, unlike [fallback].
@@ -64,6 +91,7 @@ class LocationService {
       if (position == null) return null;
       final fix = _cached = LatLng(position.latitude, position.longitude);
       fixes.value = fix;
+      _retries = 0;
       return fix;
     } catch (_) {
       return null;

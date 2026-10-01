@@ -7,6 +7,7 @@ import '../services/auth_api.dart';
 import '../services/auth_session.dart';
 import '../services/chat_api.dart';
 import '../services/realtime_service.dart';
+import '../screens/chat_thread_screen.dart';
 
 /// Why you're pinging — each picks a ready-made opener addressed to them by
 /// name, which you can then edit before sending. English source text, run
@@ -24,6 +25,31 @@ const _reasons = [
 
 /// Matches the server's MAX_MESSAGE_LENGTH for chat messages.
 const _maxLength = 2000;
+
+/// Everyone pinged this session, shared so Home and Discover agree on
+/// "Ping sent".
+final pingedPeople = ValueNotifier<Set<String>>(const {});
+
+/// PING from anywhere: the compose sheet, then a "Ping sent" note with a way
+/// into the chat.
+Future<void> pingPerson(BuildContext context, ReachablePerson person) async {
+  final sent = await showPingSheet(context, person);
+  if (!sent || !context.mounted) return;
+  pingedPeople.value = {...pingedPeople.value, person.id};
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(t('Ping sent to {name}', {'name': person.name})),
+      action: isDemoPerson(person.id)
+          ? null
+          : SnackBarAction(
+              label: t('Open chat'),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => ChatThreadScreen(otherUserId: person.id, otherName: person.name)),
+              ),
+            ),
+    ),
+  );
+}
 
 /// Composes and sends a ping to [person] without leaving the current screen.
 /// Returns whether one was sent.

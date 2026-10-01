@@ -66,9 +66,12 @@ class _Options extends StatelessWidget {
                 builder: (context, summary, _) => _OptionTile(
                   icon: Icons.shield_outlined,
                   title: t('Your area'),
-                  subtitle: summary?.people == null
+                  // Blank until loaded, rather than claiming there are none.
+                  subtitle: summary == null
+                      ? ''
+                      : summary.people == null
                       ? t('No recent alerts')
-                      : t('{count} alerts nearby', {'count': summary!.people}),
+                      : t('{count} alerts nearby', {'count': summary.people}),
                   onTap: () => showAreaSheet(context),
                 ),
               ),

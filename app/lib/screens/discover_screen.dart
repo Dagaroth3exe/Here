@@ -8,11 +8,10 @@ import '../l10n/strings.dart';
 import '../services/auth_session.dart';
 import '../services/reachability_controller.dart';
 import '../services/realtime_service.dart';
-import '../utils/initials.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/map_canvas.dart';
+import '../widgets/person_card.dart';
 import '../widgets/ping_sheet.dart';
-import 'chat_thread_screen.dart';
 import '../widgets/app_tab_bar.dart' show floatingButtonClearance;
 
 /// Live "who's Reachable right now" — sourced entirely from the realtime
@@ -26,7 +25,6 @@ class DiscoverScreen extends StatefulWidget {
 }
 
 class _DiscoverScreenState extends State<DiscoverScreen> {
-  final Set<String> _pingedIds = {};
   List<ReachablePerson> _people = const [];
   StreamSubscription<List<ReachablePerson>>? _peopleSub;
 
@@ -68,11 +66,16 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         if (!people.any((p) => p.id == _selectedId)) _selectedId = null;
       });
     });
+    // "Ping sent" also changes from Home's nearest-helper card.
+    pingedPeople.addListener(_onPinged);
   }
+
+  void _onPinged() => setState(() {});
 
   @override
   void dispose() {
     _peopleSub?.cancel();
+    pingedPeople.removeListener(_onPinged);
     super.dispose();
   }
 
@@ -119,28 +122,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     });
   }
 
-  /// Sends a personalised opener right from Discover. As the first message
-  /// it becomes a chat request ("say what you need") they accept or decline.
-  Future<void> _ping(ReachablePerson person) async {
-    final sent = await showPingSheet(context, person);
-    if (!sent || !mounted) return;
-    setState(() => _pingedIds.add(person.id));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(t('Ping sent to {name}', {'name': person.name})),
-        action: isDemoPerson(person.id)
-            ? null
-            : SnackBarAction(
-                label: t('Open chat'),
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => ChatThreadScreen(otherUserId: person.id, otherName: person.name),
-                  ),
-                ),
-              ),
-      ),
-    );
-  }
+  Future<void> _ping(ReachablePerson person) => pingPerson(context, person);
 
   @override
   Widget build(BuildContext context) {
@@ -191,7 +173,9 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(24),
               child: Container(
-                height: 220,
+                // The app's main map (Home has none): most of the top half of
+                // the screen, with the list of people underneath.
+                height: (MediaQuery.sizeOf(context).height * 0.42).clamp(240, 440),
                 foregroundDecoration: BoxDecoration(
                   border: Border.all(color: colors.hairline),
                   borderRadius: BorderRadius.circular(24),
@@ -243,12 +227,13 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         ? const <ReachablePerson>[]
         : people.where((p) => !inViewIds.contains(p.id)).toList();
 
+    final pinged = pingedPeople.value;
     Widget card(ReachablePerson person) => Padding(
       key: _cardKeys.putIfAbsent(person.id, GlobalKey.new),
       padding: const EdgeInsets.only(bottom: 8),
-      child: _PersonCard(
+      child: PersonCard(
         person: person,
-        pinged: _pingedIds.contains(person.id),
+        pinged: pinged.contains(person.id),
         selected: person.id == _selectedId,
         onTap: () => _selectFromList(person),
         onPing: () => _ping(person),
@@ -287,155 +272,6 @@ class _SectionLabel extends StatelessWidget {
           fontSize: 11,
           letterSpacing: 0.08 * 11,
           color: context.colors.ink45,
-        ),
-      ),
-    );
-  }
-}
-
-class _PersonCard extends StatelessWidget {
-  const _PersonCard({
-    required this.person,
-    required this.pinged,
-    required this.selected,
-    required this.onTap,
-    required this.onPing,
-  });
-
-  final ReachablePerson person;
-  final bool pinged;
-
-  /// Picked on the map (or by tapping this card) — tinted and outlined.
-  final bool selected;
-  final VoidCallback onTap;
-  final VoidCallback onPing;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.colors;
-    final subtitle = !person.hasLocation
-        ? t('Location not shared')
-        : selected
-        ? t('Shown on map')
-        : t('Tap to locate');
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
-        decoration: BoxDecoration(
-          color: selected ? colors.greenTint : colors.surface,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: selected ? colors.green : colors.hairline),
-        ),
-        child: Row(
-          children: [
-            // Avatar with the Reachable dot tucked into its corner.
-            SizedBox.square(
-              dimension: 40,
-              child: Stack(
-                children: [
-                  Container(
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(shape: BoxShape.circle, color: colors.sandDeep),
-                    child: Text(
-                      initialsFor(person.name),
-                      style: TextStyle(
-                        fontFamily: 'Outfit',
-                        fontWeight: FontWeight.w600,
-                        fontSize: 12.5,
-                        letterSpacing: 0.02 * 12.5,
-                        color: colors.inkMutedAvatar,
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    right: 0,
-                    bottom: 0,
-                    child: Container(
-                      width: 11,
-                      height: 11,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: colors.green,
-                        border: Border.all(color: selected ? colors.greenTint : colors.surface, width: 2),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    person.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppText.personName.copyWith(color: colors.ink, fontSize: 14.5),
-                  ),
-                  const SizedBox(height: 2),
-                  Row(
-                    children: [
-                      if (person.hasLocation) ...[
-                        Icon(
-                          selected ? Icons.location_on : Icons.location_on_outlined,
-                          size: 13,
-                          color: selected ? colors.green : colors.ink45,
-                        ),
-                        const SizedBox(width: 3),
-                      ],
-                      Flexible(
-                        child: Text(
-                          subtitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontFamily: 'Outfit',
-                            fontSize: 12,
-                            color: selected ? colors.green : colors.ink45,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: onPing,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 250),
-                height: 34,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: pinged ? colors.sand : colors.green,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  t(pinged ? 'Ping sent' : 'PING'),
-                  style: AppText.pingButton.copyWith(fontSize: 12, color: pinged ? colors.ink45 : Colors.white),
-                ),
-              ),
-            ),
-            const SizedBox(width: 6),
-            IconButton(
-              tooltip: t('Chat'),
-              visualDensity: VisualDensity.compact,
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => ChatThreadScreen(otherUserId: person.id, otherName: person.name),
-                ),
-              ),
-              icon: Icon(Icons.chat_bubble_outline_rounded, size: 18, color: colors.ink70),
-            ),
-          ],
         ),
       ),
     );

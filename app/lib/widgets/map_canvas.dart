@@ -29,7 +29,7 @@ const _labelFont = ['Noto Sans Regular'];
 /// `#rrggbb` for MapLibre annotation colors, which take CSS strings.
 String _hex(Color c) => '#${(c.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
 
-/// The live map shared by the mini map card and the full-screen map view:
+/// The live map on Discover (the app's main map):
 /// real OpenStreetMap tiles, you, and everyone Reachable who has shared a
 /// location, each drawn at their actual (server-coarsened) position.
 /// Fills whatever box it's given.
