@@ -1,0 +1,89 @@
+# Production stack: the backend plus its services, behind Caddy for HTTPS.
+# Only Caddy is reachable from outside (ports 80/443); everything else talks
+# over the internal compose network. Setup steps are in deploy/README.md.
+#
+#   cp .env.production.example .env   # then fill it in
+#   docker compose -f docker-compose.prod.yml up -d --build
+
+services:
+  backend:
+    build: ..
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      DATABASE_URL: postgres://here:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/here
+      REDIS_URL: redis://valkey:6379
+      SEARXNG_URL: http://searxng:8080
+      NTFY_PUBLIC_URL: https://${PUSH_DOMAIN:?set PUSH_DOMAIN in .env}
+      NTFY_INTERNAL_URL: http://ntfy:80
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_started
+
+  postgres:
+    image: postgis/postgis:17-3.5
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: here
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: here
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U here -d here']
+      interval: 5s
+      retries: 10
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  valkey:
+    image: valkey/valkey:8
+    restart: unless-stopped
+    volumes:
+      - valkey_data:/data
+
+  searxng:
+    image: searxng/searxng:latest
+    restart: unless-stopped
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?set SEARXNG_SECRET in .env}
+    volumes:
+      - ../searxng/settings.yml:/etc/searxng/settings.yml:ro
+
+  ntfy:
+    image: binwiederhier/ntfy:latest
+    command: serve
+    restart: unless-stopped
+    environment:
+      NTFY_BASE_URL: https://${PUSH_DOMAIN}
+      NTFY_BEHIND_PROXY: 'true'
+      NTFY_CACHE_FILE: /var/cache/ntfy/cache.db
+    volumes:
+      - ntfy_cache:/var/cache/ntfy
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in .env}
+      PUSH_DOMAIN: ${PUSH_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+      - ntfy
+
+volumes:
+  caddy_config:
+  caddy_data:
+  ntfy_cache:
+  postgres_data:
+  valkey_data:

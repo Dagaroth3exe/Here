@@ -1,0 +1,10 @@
+# Caddy gets and renews the HTTPS certificates itself; both domains just need
+# DNS A/AAAA records pointing at this server. WebSockets pass through as-is.
+{$API_DOMAIN} {
+	encode gzip
+	reverse_proxy backend:3000
+}
+
+{$PUSH_DOMAIN} {
+	reverse_proxy ntfy:80
+}

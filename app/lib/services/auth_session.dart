@@ -27,9 +27,23 @@ class AuthSession {
   static String? get userId {
     final token = _accessToken;
     if (token == null) return null;
+    return _claims(token)['sub'] as String?;
+  }
+
+  static Map<String, dynamic> _claims(String token) {
     final payloadSegment = token.split('.')[1];
-    final payload = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(payloadSegment)))) as Map<String, dynamic>;
-    return payload['sub'] as String?;
+    return jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(payloadSegment)))) as Map<String, dynamic>;
+  }
+
+  /// Sign-ins last 7 days (the token's `exp`). An expired one would leave the
+  /// app looking signed in while every request is refused.
+  static bool _expired(String token) {
+    try {
+      final exp = _claims(token)['exp'] as int?;
+      return exp != null && DateTime.fromMillisecondsSinceEpoch(exp * 1000).isBefore(DateTime.now());
+    } catch (_) {
+      return true; // unreadable: treat as signed out
+    }
   }
 
   /// Loads any previously persisted session. Call once at app startup,
@@ -37,6 +51,11 @@ class AuthSession {
   static Future<void> restore() async {
     _accessToken = await _storage.read(key: _tokenKey);
     _name = await _storage.read(key: _nameKey);
+    final token = _accessToken;
+    if (token != null && _expired(token)) {
+      await clear(); // straight to the sign-in screen
+      return;
+    }
     await _loadPrefs();
   }
 

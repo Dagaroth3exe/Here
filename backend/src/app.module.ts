@@ -24,7 +24,12 @@ import { UsersModule } from './users/users.module.js';
         type: 'postgres',
         url: config.getOrThrow<string>('DATABASE_URL'),
         autoLoadEntities: true,
+        // Dev syncs the schema from the entities; production applies the
+        // migrations in src/migrations on startup instead. After changing an
+        // entity, run `pnpm migration:generate src/migrations/<Name>`.
         synchronize: config.get('NODE_ENV') !== 'production',
+        migrations: [new URL('./migrations/*.js', import.meta.url).pathname],
+        migrationsRun: config.get('NODE_ENV') === 'production',
       }),
     }),
     EventsModule,

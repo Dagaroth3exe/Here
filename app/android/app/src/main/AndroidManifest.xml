@@ -7,11 +7,9 @@
     <application
         android:label="here_app"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="true">
-        <!-- usesCleartextTraffic is for local dev only (talking to a plain
-             http:// backend on 10.0.2.2) — replace with real HTTPS and drop
-             this before shipping. -->
+        android:icon="@mipmap/ic_launcher">
+        <!-- Release builds are HTTPS only; plain http:// to the local dev
+             backend on 10.0.2.2 is allowed in the debug/profile manifests. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
