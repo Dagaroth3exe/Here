@@ -25,5 +25,6 @@ import { EmergencyService } from './emergency.service.js';
   ],
   controllers: [EmergencyController],
   providers: [EmergencyService, JwtAuthGuard],
+  exports: [EmergencyService],
 })
 export class EmergencyModule {}

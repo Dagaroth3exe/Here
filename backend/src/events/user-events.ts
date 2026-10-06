@@ -27,7 +27,15 @@ export class UserEvents {
   private readonly subject = new Subject<UserDelivery>();
   readonly deliveries$ = this.subject.asObservable();
 
+  private readonly deleted = new Subject<string>();
+  /** Ids of accounts just deleted — the gateway closes their connections. */
+  readonly accountDeleted$ = this.deleted.asObservable();
+
   deliver(delivery: UserDelivery) {
     this.subject.next(delivery);
+  }
+
+  accountDeleted(userId: string) {
+    this.deleted.next(userId);
   }
 }

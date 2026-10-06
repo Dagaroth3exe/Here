@@ -1,4 +1,4 @@
-import { Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { Inject, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import {
   ConnectedSocket,
@@ -9,12 +9,15 @@ import {
   WebSocketGateway,
 } from '@nestjs/websockets';
 import type { IncomingMessage } from 'node:http';
+import type { Redis } from 'ioredis';
 import type { Subscription } from 'rxjs';
 import type { WebSocket } from 'ws';
 import { AreaService } from '../area/area.service.js';
+import { isAccountDeleted } from '../auth/deleted-accounts.js';
 import { ChatService } from '../chat/chat.service.js';
 import { UserEvents } from '../events/user-events.js';
 import { SAFETY_CHANGED, SafetyService } from '../safety/safety.service.js';
+import { REDIS_CLIENT } from '../redis/redis.module.js';
 import { publicName } from '../users/public-name.js';
 
 interface JwtPayload {
@@ -63,6 +66,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   private readonly logger = new Logger(RealtimeGateway.name);
   private readonly users = new Map<string, ConnectedUser>();
   private chatSubscription?: Subscription;
+  private deletedSubscription?: Subscription;
 
   constructor(
     private readonly jwtService: JwtService,
@@ -70,6 +74,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     private readonly userEvents: UserEvents,
     private readonly safety: SafetyService,
     private readonly area: AreaService,
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
   ) {}
 
   /**
@@ -90,10 +95,19 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         if (user) this.sendAll(user, delivery.event, delivery.data);
       }
     });
+    // A deleted account drops off the map at once, on every device.
+    this.deletedSubscription = this.userEvents.accountDeleted$.subscribe((id) => {
+      const user = this.users.get(id);
+      if (!user) return;
+      for (const socket of user.sockets) socket.close(4003, 'Account deleted');
+      this.users.delete(id);
+      this.broadcastPeople();
+    });
   }
 
   onModuleDestroy() {
     this.chatSubscription?.unsubscribe();
+    this.deletedSubscription?.unsubscribe();
   }
 
   handleConnection(socket: TrackedSocket, request: IncomingMessage) {
@@ -112,6 +126,16 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     }
 
     const id = payload.sub;
+    // Checked before the socket counts as Reachable; the check is async, so a
+    // closed-in-the-meantime socket is simply never added.
+    void isAccountDeleted(this.redis, id).then((deleted) => {
+      if (deleted) socket.close(4003, 'Account deleted');
+      else this.register(socket, id, payload);
+    });
+  }
+
+  private register(socket: TrackedSocket, id: string, payload: JwtPayload) {
+    if (socket.readyState !== socket.OPEN) return;
     // Tokens issued before the phone-number-as-display-name fix still carry
     // it, so this goes through the same filter as everything else.
     const name = publicName(payload);

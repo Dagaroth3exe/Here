@@ -63,4 +63,19 @@ class ProfileApi {
     }
     throw AuthApiException('Something went wrong (${response.statusCode})');
   }
+
+  /// Permanently deletes the signed-in account and everything personal tied
+  /// to it (see the backend's AccountService).
+  static Future<void> deleteAccount(String accessToken) async {
+    late final http.Response response;
+    try {
+      response = await http
+          .delete(Uri.parse('$_baseUrl/account'), headers: {'Authorization': 'Bearer $accessToken'})
+          .timeout(const Duration(seconds: 20));
+    } catch (_) {
+      throw AuthApiException("Couldn't reach the server. Check your connection and try again.");
+    }
+    if (response.statusCode >= 200 && response.statusCode < 300) return;
+    throw AuthApiException('Something went wrong (${response.statusCode})');
+  }
 }

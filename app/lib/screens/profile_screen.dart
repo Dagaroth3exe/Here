@@ -4,33 +4,22 @@ import '../design/colors.dart';
 import '../design/typography.dart';
 import '../l10n/strings.dart';
 import '../services/auth_session.dart';
-import '../services/area_safety.dart';
 import '../services/emergency_api.dart';
 import '../services/emergency_center.dart';
-import '../services/push_notifications.dart';
 import '../services/avatar_controller.dart';
 import '../services/profile_api.dart';
 import '../services/profile_controller.dart';
 import '../utils/initials.dart';
 import '../widgets/area_info.dart';
 import '../widgets/avatar_thumb.dart';
-import 'auth/auth_screen.dart';
 import 'edit_profile_screen.dart';
 import 'emergency_alert_screen.dart';
+import '../services/sign_out.dart';
 import 'emergency_screen.dart';
 import 'settings_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
-
-  Future<void> _signOut(BuildContext context) async {
-    EmergencyCenter.instance.reset();
-    AreaSafety.instance.reset();
-    await PushNotifications.disable();
-    await AuthSession.clear();
-    if (!context.mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const AuthScreen()), (route) => false);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -145,7 +134,7 @@ class ProfileScreen extends StatelessWidget {
               ),
               const SizedBox(height: 24),
               GestureDetector(
-                onTap: () => _signOut(context),
+                onTap: () => signOut(context),
                 child: Container(
                   width: double.infinity,
                   height: 50,

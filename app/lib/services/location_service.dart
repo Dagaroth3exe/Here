@@ -16,6 +16,18 @@ class LocationService {
   static LatLng? _cached;
   static Future<LatLng?>? _pending;
 
+  /// Shown before the system's location prompt (the "prominent disclosure"
+  /// app stores require): says what location is used for, then returns
+  /// whether to go on and ask. Null when it can't be shown yet (no screen
+  /// up) — then nothing is asked, and the retry below tries again later.
+  /// Set by the app at start-up (see main.dart).
+  static Future<bool?> Function()? explainBeforeAsking;
+
+  /// "Not now" on the explanation: background lookups stop asking until the
+  /// next app start. Something you tap yourself (SOS, the locate button)
+  /// still asks.
+  static bool _declined = false;
+
   /// Keeps asking until there's a first fix: right after a phone (or
   /// emulator) boots, GPS can take longer than one request's timeout, and
   /// without a retry the app would never learn where it is.
@@ -40,7 +52,7 @@ class LocationService {
   /// null when location is off, permission is refused, or there's no fix —
   /// never [fallback], so the caller can tell the user instead of silently
   /// showing the wrong place.
-  static Future<LatLng?> locate() => _fetch(accuracy: LocationAccuracy.high);
+  static Future<LatLng?> locate() => _fetch(accuracy: LocationAccuracy.high, userAsked: true);
 
   /// Concurrent callers (Home sharing your location, each mounted map)
   /// share one in-flight request, so the permission prompt shows once.
@@ -48,8 +60,8 @@ class LocationService {
   /// Until there's a first fix it asks for GPS (high accuracy): "medium" is
   /// served from Wi-Fi/cell positioning, which a phone may not have (indoors
   /// with no network location, or an emulator), and would then never answer.
-  static Future<LatLng?> _fetch({LocationAccuracy accuracy = LocationAccuracy.medium}) =>
-      _pending ??= _request(_cached == null ? LocationAccuracy.high : accuracy)
+  static Future<LatLng?> _fetch({LocationAccuracy accuracy = LocationAccuracy.medium, bool userAsked = false}) =>
+      _pending ??= _request(_cached == null ? LocationAccuracy.high : accuracy, userAsked: userAsked)
           .whenComplete(() => _pending = null)
           .then((fix) {
             if (fix == null && _cached == null) _retryLater();
@@ -67,12 +79,23 @@ class LocationService {
     });
   }
 
-  static Future<LatLng?> _request(LocationAccuracy accuracy) async {
+  static Future<LatLng?> _request(LocationAccuracy accuracy, {required bool userAsked}) async {
     try {
       if (!await Geolocator.isLocationServiceEnabled()) return null;
 
       var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
+        if (_declined && !userAsked) return null;
+        final explain = explainBeforeAsking;
+        if (explain != null) {
+          final goOn = await explain();
+          if (goOn == null) return null;
+          if (!goOn) {
+            _declined = true;
+            return null;
+          }
+          _declined = false;
+        }
         permission = await Geolocator.requestPermission();
       }
       if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {

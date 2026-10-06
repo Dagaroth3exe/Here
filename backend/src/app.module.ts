@@ -3,12 +3,14 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
+import { AccountModule } from './account/account.module.js';
 import { AskModule } from './ask/ask.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { ChatModule } from './chat/chat.module.js';
 import { CrimeModule } from './crime/crime.module.js';
 import { EmergencyModule } from './emergency/emergency.module.js';
 import { EventsModule } from './events/events.module.js';
+import { LegalModule } from './legal/legal.module.js';
 import { RealtimeModule } from './realtime/realtime.module.js';
 import { PushModule } from './push/push.module.js';
 import { RedisModule } from './redis/redis.module.js';
@@ -43,6 +45,8 @@ import { UsersModule } from './users/users.module.js';
     PushModule,
     EmergencyModule,
     CrimeModule,
+    AccountModule,
+    LegalModule,
   ],
   controllers: [AppController],
   providers: [AppService],

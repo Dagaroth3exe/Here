@@ -254,6 +254,12 @@ export class EmergencyService {
   }
 
   /** Your own open alarm, if any — so the app can restore it after a restart. */
+  /** Account deletion: an alert still open is ended first, so every siren stops. */
+  async endOpenAlert(userId: string): Promise<void> {
+    const open = await this.activeFor(userId);
+    if (open) await this.resolve(userId, open.id);
+  }
+
   async mine(userId: string): Promise<EmergencyPayload | null> {
     const open = await this.activeFor(userId);
     return open ? this.toPayload(open, await this.nameOf(userId)) : null;

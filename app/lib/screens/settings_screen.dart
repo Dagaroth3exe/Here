@@ -5,7 +5,9 @@ import '../design/typography.dart';
 import '../l10n/app_locale.dart';
 import '../l10n/strings.dart';
 import '../services/area_safety.dart';
+import '../services/legal.dart';
 import '../services/theme_controller.dart';
+import '../widgets/delete_account_sheet.dart';
 import 'blocked_people_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -69,6 +71,26 @@ class SettingsScreen extends StatelessWidget {
                   style: AppText.meta.copyWith(color: colors.ink50),
                 ),
               ),
+            ),
+            const SizedBox(height: 28),
+            Text(t('Account'), style: AppText.sectionHeader.copyWith(color: colors.ink)),
+            const SizedBox(height: 6),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.privacy_tip_outlined, color: colors.ink70),
+              title: Text(t('Privacy policy'), style: AppText.reputationLine.copyWith(color: colors.ink)),
+              trailing: Icon(Icons.open_in_new, size: 18, color: colors.ink38),
+              onTap: openPrivacyPolicy,
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.delete_forever_outlined, color: colors.error),
+              title: Text(t('Delete account'), style: AppText.reputationLine.copyWith(color: colors.error)),
+              subtitle: Text(
+                t('Permanently remove your account and data'),
+                style: AppText.meta.copyWith(color: colors.ink50),
+              ),
+              onTap: () => showDeleteAccountSheet(context),
             ),
           ],
         ),

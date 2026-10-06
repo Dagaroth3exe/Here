@@ -6,9 +6,11 @@ import 'l10n/app_locale.dart';
 import 'screens/splash_screen.dart';
 import 'services/accent_controller.dart';
 import 'services/auth_session.dart';
+import 'services/location_service.dart';
 import 'services/push_notifications.dart';
 import 'services/reachability_controller.dart';
 import 'services/theme_controller.dart';
+import 'widgets/location_disclosure.dart';
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,6 +20,8 @@ Future<void> main(List<String> args) async {
   await PushNotifications.init(background: background);
   if (background) return;
   await AuthSession.restore();
+  // Explain what location is for before the system asks for it.
+  LocationService.explainBeforeAsking = showLocationDisclosure;
   runApp(const HereApp());
 }
 

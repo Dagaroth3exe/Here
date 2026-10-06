@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../design/colors.dart';
 import '../../design/typography.dart';
 import '../../l10n/strings.dart';
+import '../../services/legal.dart';
 import '../../shell.dart';
 import 'auth_widgets.dart';
 import 'login_form.dart';
@@ -124,6 +125,21 @@ class _AuthScreenState extends State<AuthScreen> {
                     child: AuthLink(
                       text: t('Use phone number instead'),
                       onTap: _openPhoneFlow,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  // Covers every way in (name, Google, Apple, phone).
+                  Center(
+                    child: Wrap(
+                      alignment: WrapAlignment.center,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          t('By continuing, you agree to our '),
+                          style: AppText.meta.copyWith(color: colors.ink50),
+                        ),
+                        AuthLink(text: t('Privacy Policy'), onTap: openPrivacyPolicy),
+                      ],
                     ),
                   ),
                 ],
